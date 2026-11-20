@@ -1,0 +1,65 @@
+{
+  "_SceneSvg-BeQjiGxk.js": {
+    "file": "chunks/SceneSvg-BeQjiGxk.js",
+    "name": "SceneSvg",
+    "imports": [
+      "__plugin-vue_export-helper-BEhKa5c0.js"
+    ],
+    "css": [
+      "assets/SceneSvg-CHr_VMo7.css"
+    ]
+  },
+  "_SceneSvg-CHr_VMo7.css": {
+    "file": "assets/SceneSvg-CHr_VMo7.css",
+    "src": "_SceneSvg-CHr_VMo7.css"
+  },
+  "__plugin-vue_export-helper-BEhKa5c0.js": {
+    "file": "chunks/_plugin-vue_export-helper-BEhKa5c0.js",
+    "name": "_plugin-vue_export-helper",
+    "css": [
+      "assets/_plugin-vue_export-helper-DIwyLplk.css"
+    ]
+  },
+  "__plugin-vue_export-helper-DIwyLplk.css": {
+    "file": "assets/_plugin-vue_export-helper-DIwyLplk.css",
+    "src": "__plugin-vue_export-helper-DIwyLplk.css"
+  },
+  "resources/js/editor/main.ts": {
+    "file": "editor-PLccRTVH.js",
+    "name": "editor",
+    "src": "resources/js/editor/main.ts",
+    "isEntry": true,
+    "imports": [
+      "__plugin-vue_export-helper-BEhKa5c0.js"
+    ],
+    "css": [
+      "assets/editor-DwK_H2R7.css"
+    ]
+  },
+  "resources/js/kiosk/main.ts": {
+    "file": "kiosk-BdIO7ji-.js",
+    "name": "kiosk",
+    "src": "resources/js/kiosk/main.ts",
+    "isEntry": true,
+    "imports": [
+      "__plugin-vue_export-helper-BEhKa5c0.js",
+      "_SceneSvg-BeQjiGxk.js"
+    ],
+    "css": [
+      "assets/kiosk-DTh74kg7.css"
+    ]
+  },
+  "resources/js/viewer/main.ts": {
+    "file": "viewer-Cmlm0w3W.js",
+    "name": "viewer",
+    "src": "resources/js/viewer/main.ts",
+    "isEntry": true,
+    "imports": [
+      "__plugin-vue_export-helper-BEhKa5c0.js",
+      "_SceneSvg-BeQjiGxk.js"
+    ],
+    "css": [
+      "assets/viewer-BbsXeiRA.css"
+    ]
+  }
+}

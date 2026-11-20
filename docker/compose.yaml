@@ -1,0 +1,115 @@
+name: weathermapv2-dev
+
+services:
+  db:
+    image: mariadb:11.4
+    command:
+      - mariadbd
+      - --innodb-file-per-table=1
+      - --lower-case-table-names=0
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      TZ: Asia/Jakarta
+      MYSQL_DATABASE: librenms
+      MYSQL_USER: librenms
+      MYSQL_PASSWORD: librenms_dev_password
+      MYSQL_ROOT_PASSWORD: root_dev_password
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      TZ: Asia/Jakarta
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rrdcached:
+    image: crazymax/rrdcached:latest
+    environment:
+      TZ: Asia/Jakarta
+      LOG_LEVEL: LOG_INFO
+      WRITE_TIMEOUT: 300
+      WRITE_JITTER: 30
+    volumes:
+      - rrd_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 42217"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  librenms:
+    image: librenms/librenms:latest
+    hostname: librenms
+    security_opt:
+      - label:disable
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rrdcached:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      TZ: Asia/Jakarta
+      DB_HOST: db
+      DB_NAME: librenms
+      DB_USER: librenms
+      DB_PASSWORD: librenms_dev_password
+      DB_TIMEOUT: 60
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+      REDIS_HOST: redis
+      RRDCACHED: rrdcached:42217
+      MEMORY_LIMIT: 512M
+      LIBRENMS_WEATHERMAP: "false"
+    volumes:
+      - librenms_data:/data
+      - rrd_data:/data/rrd
+      - ..:/opt/librenms-weathermap-plugin:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/up || curl -fsS -o /dev/null http://127.0.0.1:8000/login || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  snmpsim:
+    image: tandrup/snmpsim:latest
+    security_opt:
+      - label:disable
+    ports:
+      - "1161:161/udp"
+    volumes:
+      - ./snmpsim:/usr/local/snmpsim/data:ro
+    profiles:
+      - snmp
+
+  vite:
+    image: node:22-alpine
+    working_dir: /workspace
+    security_opt:
+      - label:disable
+    ports:
+      - "5173:5173"
+    volumes:
+      - ..:/workspace
+    command: ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0"]
+    profiles:
+      - frontend
+
+volumes:
+  db_data:
+  rrd_data:
+  librenms_data:

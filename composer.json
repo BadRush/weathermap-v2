@@ -1,0 +1,73 @@
+{
+    "name": "badrush/weathermap-v2",
+    "description": "weathermapV2 — Modern Network Weathermap plugin for LibreNMS (v2 package) with drag-and-drop SVG editor, multi-VIA angled/curved routing, live SVG viewer/kiosk, server-side GD PNG renderer, and classic .conf importer.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/BadRush/weathermap-v2",
+    "support": {
+        "issues": "https://github.com/BadRush/weathermap-v2/issues",
+        "source": "https://github.com/BadRush/weathermap-v2"
+    },
+    "keywords": [
+        "librenms",
+        "librenms-plugin",
+        "weathermap",
+        "weathermapv2",
+        "network-map",
+        "monitoring"
+    ],
+    "authors": [
+        {
+            "name": "BadRush",
+            "email": "anamb4drus@gmail.com",
+            "homepage": "https://github.com/BadRush"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "ext-gd": "*",
+        "ext-json": "*",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/contracts": "^12.0|^13.0",
+        "illuminate/database": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/routing": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0",
+        "librenms/plugin-interfaces": "^1.0",
+        "symfony/process": "^7.0|^8.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.20",
+        "orchestra/testbench": "^10.0|^11.0",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^11.5|^12.0|^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "BadRush\\Weathermap\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BadRush\\Weathermap\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "BadRush\\Weathermap\\WeathermapServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse --memory-limit=512M",
+        "lint": "pint --test",
+        "format": "pint"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

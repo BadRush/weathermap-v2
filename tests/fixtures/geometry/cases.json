@@ -1,0 +1,207 @@
+{
+    "endpointOffsets": [
+        { "node": { "x": 100, "y": 200, "iconWidth": 80, "iconHeight": 40 }, "offset": "C", "expected": { "x": 100, "y": 200 } },
+        { "node": { "x": 100, "y": 200, "iconWidth": 80, "iconHeight": 40 }, "offset": "E", "expected": { "x": 140, "y": 200 } },
+        { "node": { "x": 100, "y": 200, "iconWidth": 80, "iconHeight": 40 }, "offset": "NW", "expected": { "x": 60, "y": 180 } },
+        { "node": { "x": 100, "y": 200, "iconWidth": 80, "iconHeight": 40 }, "offset": "S50", "expected": { "x": 100, "y": 210 } },
+        { "node": { "x": 100, "y": 200, "iconWidth": 80, "iconHeight": 40 }, "offset": "-15:+25", "expected": { "x": 85, "y": 225 } }
+    ],
+    "links": [
+        {
+            "name": "straight_classic",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 200, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 500, "y": 200, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "l1",
+                "a": { "nodeId": "a", "offset": "C" },
+                "b": { "nodeId": "b", "offset": "C" },
+                "via": [],
+                "viaStyle": "curved",
+                "width": 8,
+                "arrowStyle": "classic",
+                "splitPos": 0.5,
+                "inLabelPos": 0.25,
+                "outLabelPos": 0.75
+            },
+            "parallelIndex": 0,
+            "parallelCount": 1,
+            "expected": {
+                "centerlineCount": 2,
+                "outTip": { "x": 300, "y": 200 },
+                "inTip": { "x": 300, "y": 200 },
+                "outLabelPos": { "x": 400, "y": 200 },
+                "inLabelPos": { "x": 200, "y": 200 },
+                "outPolygonCount": 7
+            }
+        },
+        {
+            "name": "curved_via_compact",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 300, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 500, "y": 300, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "l2",
+                "a": { "nodeId": "a", "offset": "E" },
+                "b": { "nodeId": "b", "offset": "W" },
+                "via": [{ "x": 300, "y": 180 }],
+                "viaStyle": "curved",
+                "width": 6,
+                "arrowStyle": "compact",
+                "splitPos": 0.5,
+                "inLabelPos": 0.3,
+                "outLabelPos": 0.7
+            },
+            "parallelIndex": 0,
+            "parallelCount": 1,
+            "expected": {
+                "centerlineCount": 33,
+                "outTip": { "x": 300, "y": 180 },
+                "inTip": { "x": 300, "y": 180 }
+            }
+        },
+        {
+            "name": "angled_via_asymmetric_split",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 100, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 400, "y": 400, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "l3",
+                "a": { "nodeId": "a", "offset": "C" },
+                "b": { "nodeId": "b", "offset": "C" },
+                "via": [{ "x": 400, "y": 100 }],
+                "viaStyle": "angled",
+                "width": 7,
+                "arrowStyle": "classic",
+                "splitPos": 0.5,
+                "inLabelPos": 0.25,
+                "outLabelPos": 0.75
+            },
+            "parallelIndex": 0,
+            "parallelCount": 1,
+            "expected": {
+                "centerlineCount": 3,
+                "outTip": { "x": 400, "y": 100 },
+                "inTip": { "x": 400, "y": 100 },
+                "inLabelPos": { "x": 250, "y": 100 },
+                "outLabelPos": { "x": 400, "y": 250 }
+            }
+        },
+        {
+            "name": "parallel_pair_slot0",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 200, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 500, "y": 200, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "lp0",
+                "a": { "nodeId": "a", "offset": "C" },
+                "b": { "nodeId": "b", "offset": "C" },
+                "via": [],
+                "viaStyle": "curved",
+                "width": 7,
+                "arrowStyle": "classic",
+                "splitPos": 0.5,
+                "inLabelPos": 0.25,
+                "outLabelPos": 0.75
+            },
+            "parallelIndex": 0,
+            "parallelCount": 2,
+            "expected": {
+                "centerlineCount": 33,
+                "outTip": { "x": 300, "y": 186 }
+            }
+        },
+        {
+            "name": "angled_multi_via_z_shape",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 100, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 500, "y": 300, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "l_z",
+                "a": { "nodeId": "a", "offset": "C" },
+                "b": { "nodeId": "b", "offset": "C" },
+                "via": [
+                    { "x": 300, "y": 100 },
+                    { "x": 300, "y": 300 }
+                ],
+                "viaStyle": "angled",
+                "width": 10,
+                "arrowStyle": "classic",
+                "splitPos": 0.5,
+                "inLabelPos": 0.75,
+                "outLabelPos": 0.25
+            },
+            "parallelIndex": 0,
+            "parallelCount": 1,
+            "expected": {
+                "centerlineCount": 4,
+                "outTip": { "x": 300, "y": 200 },
+                "inTip": { "x": 300, "y": 200 },
+                "outLabelPos": { "x": 250, "y": 100 },
+                "inLabelPos": { "x": 350, "y": 300 },
+                "miterCorners": [
+                    { "x": 295, "y": 105 },
+                    { "x": 305, "y": 95 }
+                ]
+            }
+        },
+        {
+            "name": "angled_multi_via_staircase",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 100, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 500, "y": 300, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "l_stair",
+                "a": { "nodeId": "a", "offset": "C" },
+                "b": { "nodeId": "b", "offset": "C" },
+                "via": [
+                    { "x": 200, "y": 100 },
+                    { "x": 200, "y": 200 },
+                    { "x": 400, "y": 200 },
+                    { "x": 400, "y": 300 }
+                ],
+                "viaStyle": "angled",
+                "width": 8,
+                "arrowStyle": "compact",
+                "splitPos": 0.5,
+                "inLabelPos": 0.75,
+                "outLabelPos": 0.25
+            },
+            "parallelIndex": 0,
+            "parallelCount": 1,
+            "expected": {
+                "centerlineCount": 6,
+                "outTip": { "x": 300, "y": 200 },
+                "inTip": { "x": 300, "y": 200 }
+            }
+        },
+        {
+            "name": "angled_hairpin_bevel",
+            "nodeA": { "id": "a", "label": "A", "x": 100, "y": 100, "iconWidth": 64, "iconHeight": 36 },
+            "nodeB": { "id": "b", "label": "B", "x": 100, "y": 140, "iconWidth": 64, "iconHeight": 36 },
+            "link": {
+                "id": "l_hairpin",
+                "a": { "nodeId": "a", "offset": "C" },
+                "b": { "nodeId": "b", "offset": "C" },
+                "via": [
+                    { "x": 360, "y": 120 },
+                    { "x": 200, "y": 130 }
+                ],
+                "viaStyle": "angled",
+                "width": 10,
+                "arrowStyle": "classic",
+                "splitPos": 0.65,
+                "inLabelPos": 0.8,
+                "outLabelPos": 0.3
+            },
+            "parallelIndex": 0,
+            "parallelCount": 1,
+            "expected": {
+                "centerlineCount": 4,
+                "outTip": { "x": 281.89, "y": 124.88 },
+                "maxCoordX": 375
+            }
+        }
+    ],
+    "scales": [
+        { "percent": 0, "expected": "#c0c0c0" },
+        { "percent": 0.5, "expected": "#ffffff" },
+        { "percent": 5, "expected": "#8c00ff" },
+        { "percent": 50, "expected": "#00f000" },
+        { "percent": 95, "expected": "#ff0000" }
+    ]
+}

@@ -1,0 +1,11 @@
+/vendor/
+/composer.lock
+/node_modules/
+/.phpstan-cache/
+/.phpunit.result.cache
+/coverage/
+/playwright-report/
+/test-results/
+/.env
+*.log
+.DS_Store

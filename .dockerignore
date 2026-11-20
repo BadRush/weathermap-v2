@@ -1,0 +1,9 @@
+.git
+node_modules
+vendor
+.phpstan-cache
+coverage
+playwright-report
+test-results
+.env
+*.log
