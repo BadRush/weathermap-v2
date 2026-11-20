@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace BadRush\Weathermap\Support;
 
 use App\Facades\LibrenmsConfig;
+use DateTimeZone;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use LibreNMS\Interfaces\Plugins\PluginManagerInterface;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Throwable;
 
 /**
  * Thin compatibility adapter bridging LibreNMS 26.x host APIs (LibrenmsConfig, Spatie RBAC,
@@ -20,6 +22,8 @@ final class LibreNmsBridge
     public const string PLUGIN_NAME = 'weathermapV2';
 
     public const string EDIT_PERMISSION = 'weathermap.edit';
+
+    public const string DEFAULT_TIMEZONE = 'Asia/Jakarta';
 
     public static function config(string $key, mixed $default = null): mixed
     {
@@ -52,6 +56,51 @@ final class LibreNmsBridge
     }
 
     /**
+     * Resolve the IANA timezone used for map "Updated: ..." timestamps.
+     * Priority: Plugin Settings -> config('weathermap.timezone') / WEATHERMAP_TIMEZONE -> Asia/Jakarta (WIB).
+     */
+    public static function timezone(): string
+    {
+        $candidates = [];
+
+        try {
+            if (app()->bound(PluginManagerInterface::class)) {
+                $settings = self::pluginSettings();
+                if (is_string($settings['timezone'] ?? null) && trim($settings['timezone']) !== '') {
+                    $candidates[] = trim($settings['timezone']);
+                }
+            }
+        } catch (Throwable) {
+            // Ignore when invoked outside the Laravel container
+        }
+
+        try {
+            if (app()->bound('config')) {
+                $configured = config('weathermap.timezone');
+                if (is_string($configured) && trim($configured) !== '') {
+                    $candidates[] = trim($configured);
+                }
+            }
+        } catch (Throwable) {
+            // Ignore when invoked outside the Laravel container
+        }
+
+        $candidates[] = self::DEFAULT_TIMEZONE;
+
+        foreach ($candidates as $tz) {
+            try {
+                new DateTimeZone($tz);
+
+                return $tz;
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return self::DEFAULT_TIMEZONE;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function pluginSettings(): array
@@ -61,7 +110,7 @@ final class LibreNmsBridge
             $pm = app(PluginManagerInterface::class);
             try {
                 return $pm->getSettings(self::PLUGIN_NAME);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 return [];
             }
         }
@@ -122,7 +171,7 @@ final class LibreNmsBridge
         if (method_exists($user, 'hasPermissionTo')) {
             try {
                 return (bool) $user->hasPermissionTo($permission);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 return false;
             }
         }
@@ -158,7 +207,7 @@ final class LibreNmsBridge
                     $admin->givePermissionTo($perm);
                 }
             }
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Database may not be migrated yet during composer/package discovery
         }
     }

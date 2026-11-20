@@ -91,6 +91,12 @@ final class DocumentValidator
                 if (isset($link['infoUrl']) && $link['infoUrl'] !== '' && ! self::isSafeUrl($link['infoUrl'])) {
                     $errors[] = "links[$idx].infoUrl must be an http(s) URL or relative path.";
                 }
+                if (isset($link['staticLabelBgColor']) && ! self::isValidColor($link['staticLabelBgColor'])) {
+                    $errors[] = "links[$idx].staticLabelBgColor must be a valid hex color (#RGB or #RRGGBB).";
+                }
+                if (isset($link['staticLabelTextColor']) && ! self::isValidColor($link['staticLabelTextColor'])) {
+                    $errors[] = "links[$idx].staticLabelTextColor must be a valid hex color (#RGB or #RRGGBB).";
+                }
 
                 if (isset($link['target']) && is_array($link['target']) && is_array($link['target']['terms'] ?? null)) {
                     foreach ($link['target']['terms'] as $tIdx => $term) {
@@ -105,6 +111,43 @@ final class DocumentValidator
                                 $errors[] = "links[$idx].target.terms[$tIdx].rrdPath must be a safe relative path.";
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        if (array_key_exists('annotations', $data)) {
+            $annotations = $data['annotations'];
+            if (! is_array($annotations)) {
+                $errors[] = 'annotations must be an array.';
+            } else {
+                $annotationIds = [];
+                foreach ($annotations as $idx => $annotation) {
+                    if (! is_array($annotation)) {
+                        $errors[] = "annotations[$idx] must be an object.";
+
+                        continue;
+                    }
+                    $id = $annotation['id'] ?? null;
+                    if (! is_string($id) || $id === '' || strlen($id) > 128) {
+                        $errors[] = "annotations[$idx].id must be a non-empty string up to 128 characters.";
+                    } elseif (isset($annotationIds[$id])) {
+                        $errors[] = "Duplicate annotation id '$id'.";
+                    } else {
+                        $annotationIds[$id] = true;
+                    }
+
+                    if (isset($annotation['textColor']) && ! self::isValidColor($annotation['textColor'])) {
+                        $errors[] = "annotations[$idx].textColor must be a valid hex color (#RGB or #RRGGBB).";
+                    }
+                    if (isset($annotation['bgColor']) && ! self::isValidColor($annotation['bgColor'])) {
+                        $errors[] = "annotations[$idx].bgColor must be a valid hex color (#RGB or #RRGGBB).";
+                    }
+                    if (isset($annotation['borderColor']) && ! self::isValidColor($annotation['borderColor'])) {
+                        $errors[] = "annotations[$idx].borderColor must be a valid hex color (#RGB or #RRGGBB).";
+                    }
+                    if (isset($annotation['infoUrl']) && $annotation['infoUrl'] !== '' && ! self::isSafeUrl($annotation['infoUrl'])) {
+                        $errors[] = "annotations[$idx].infoUrl must be an http(s) URL or relative path.";
                     }
                 }
             }

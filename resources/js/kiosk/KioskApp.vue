@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
         <template v-else>
             <div class="wm-kiosk-stage">
                 <div v-if="errorMsg && !scene" role="alert">{{ errorMsg }}</div>
-                <SceneSvg v-else-if="scene" :scene="scene" class="wm-kiosk-svg" />
+                <SceneSvg v-else-if="scene" :scene="scene" fit-mode="kiosk" class="wm-kiosk-svg" />
             </div>
 
             <div class="wm-kiosk-hud">

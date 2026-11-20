@@ -6,6 +6,7 @@ namespace BadRush\Weathermap;
 
 use BadRush\Weathermap\Console\ImportCommand;
 use BadRush\Weathermap\Console\RenderCommand;
+use BadRush\Weathermap\Console\SyncAssetsCommand;
 use BadRush\Weathermap\Data\LibreNmsPortRepository;
 use BadRush\Weathermap\Data\PortDbSource;
 use BadRush\Weathermap\Data\PortRepositoryInterface;
@@ -90,6 +91,7 @@ class WeathermapServiceProvider extends ServiceProvider
             $this->commands([
                 RenderCommand::class,
                 ImportCommand::class,
+                SyncAssetsCommand::class,
             ]);
 
             if ((bool) config('weathermap.schedule_enabled', true)) {

@@ -44,6 +44,15 @@ final readonly class LinkDef
         public string $inComment = '',
         public string $outComment = '',
         public int $zOrder = 300,
+        public string $staticLabel = '',
+        public float $staticLabelPos = 0.5,
+        public float $staticLabelOffsetX = 0.0,
+        public float $staticLabelOffsetY = -18.0,
+        public int $staticLabelFontSize = 10,
+        public string $staticLabelBgColor = '#0f172a',
+        public string $staticLabelTextColor = '#e2e8f0',
+        public ?int $vendorIconAssetId = null,
+        public int $vendorIconSize = 16,
     ) {}
 
     /**
@@ -96,6 +105,15 @@ final readonly class LinkDef
             inComment: is_string($data['inComment'] ?? null) ? $data['inComment'] : '',
             outComment: is_string($data['outComment'] ?? null) ? $data['outComment'] : '',
             zOrder: (int) ($data['zOrder'] ?? 300),
+            staticLabel: is_string($data['staticLabel'] ?? null) ? $data['staticLabel'] : '',
+            staticLabelPos: max(0.05, min(0.95, is_numeric($data['staticLabelPos'] ?? null) ? (float) $data['staticLabelPos'] : 0.5)),
+            staticLabelOffsetX: max(-400.0, min(400.0, is_numeric($data['staticLabelOffsetX'] ?? null) ? (float) $data['staticLabelOffsetX'] : 0.0)),
+            staticLabelOffsetY: max(-400.0, min(400.0, is_numeric($data['staticLabelOffsetY'] ?? null) ? (float) $data['staticLabelOffsetY'] : -18.0)),
+            staticLabelFontSize: max(7, min(24, (int) ($data['staticLabelFontSize'] ?? 10))),
+            staticLabelBgColor: is_string($data['staticLabelBgColor'] ?? null) ? $data['staticLabelBgColor'] : '#0f172a',
+            staticLabelTextColor: is_string($data['staticLabelTextColor'] ?? null) ? $data['staticLabelTextColor'] : '#e2e8f0',
+            vendorIconAssetId: isset($data['vendorIconAssetId']) && is_numeric($data['vendorIconAssetId']) ? (int) $data['vendorIconAssetId'] : null,
+            vendorIconSize: max(12, min(40, (int) ($data['vendorIconSize'] ?? 16))),
         );
     }
 
@@ -125,6 +143,15 @@ final readonly class LinkDef
             'inComment' => $this->inComment,
             'outComment' => $this->outComment,
             'zOrder' => $this->zOrder,
+            'staticLabel' => $this->staticLabel,
+            'staticLabelPos' => $this->staticLabelPos,
+            'staticLabelOffsetX' => $this->staticLabelOffsetX,
+            'staticLabelOffsetY' => $this->staticLabelOffsetY,
+            'staticLabelFontSize' => $this->staticLabelFontSize,
+            'staticLabelBgColor' => $this->staticLabelBgColor,
+            'staticLabelTextColor' => $this->staticLabelTextColor,
+            'vendorIconAssetId' => $this->vendorIconAssetId,
+            'vendorIconSize' => $this->vendorIconSize,
         ];
     }
 }

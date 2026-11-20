@@ -3,6 +3,8 @@ import { ref } from 'vue';
 import { apiGet } from '../shared/api';
 import { formatBits } from '../shared/geometry';
 import type {
+    AnnotationDef,
+    AssetKind,
     DeviceLookupItem,
     LinkDef,
     MapDocument,
@@ -15,6 +17,7 @@ const props = defineProps<{
     doc: MapDocument;
     selectedNode: NodeDef | null;
     selectedLink: LinkDef | null;
+    selectedAnnotation: AnnotationDef | null;
     selectedViaIndex: number | null;
     multiCount: number;
     pngEnabled: boolean;
@@ -23,7 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'commit'): void;
     (e: 'delete-selected'): void;
-    (e: 'open-assets', kind: 'background' | 'icon'): void;
+    (e: 'open-assets', kind: AssetKind): void;
     (e: 'update:pngEnabled', value: boolean): void;
     (e: 'select-via', index: number | null): void;
     (e: 'apply-route', mode: 'L' | 'Z'): void;
@@ -154,6 +157,120 @@ function moveVia(idx: number, delta: -1 | 1): void {
             <button type="button" class="wm-btn wm-btn-danger" style="width: 100%" @click="emit('delete-selected')">
                 Delete Selected Nodes
             </button>
+        </template>
+
+        <!-- Selected Free-Floating Static Label (Annotation) Inspector -->
+        <template v-else-if="selectedAnnotation">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px">
+                <h3 class="wm-panel-title" style="margin: 0">Static Label</h3>
+                <button type="button" class="wm-btn wm-btn-danger" @click="emit('delete-selected')">Delete</button>
+            </div>
+
+            <div class="wm-field">
+                <label class="wm-label" for="wm-a-text">Label Text (multi-line supported)</label>
+                <textarea
+                    id="wm-a-text"
+                    v-model="selectedAnnotation.text"
+                    rows="3"
+                    class="wm-input"
+                    style="resize: vertical; min-height: 70px"
+                    placeholder="e.g. Telkom Astinet&#10;CID: 1029384&#10;10 Gbps"
+                    @change="emit('commit')"
+                />
+            </div>
+
+            <div class="wm-row wm-field">
+                <div>
+                    <label class="wm-label" for="wm-a-x">X</label>
+                    <input id="wm-a-x" v-model.number="selectedAnnotation.x" type="number" class="wm-input wm-tabular" @change="emit('commit')" />
+                </div>
+                <div>
+                    <label class="wm-label" for="wm-a-y">Y</label>
+                    <input id="wm-a-y" v-model.number="selectedAnnotation.y" type="number" class="wm-input wm-tabular" @change="emit('commit')" />
+                </div>
+            </div>
+
+            <div class="wm-row wm-field">
+                <div>
+                    <label class="wm-label" for="wm-a-style">Style</label>
+                    <select id="wm-a-style" v-model="selectedAnnotation.style" class="wm-select" @change="emit('commit')">
+                        <option value="card">Card (Background + Border)</option>
+                        <option value="plain">Plain Text (Transparent)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="wm-label" for="wm-a-align">Alignment</label>
+                    <select id="wm-a-align" v-model="selectedAnnotation.align" class="wm-select" @change="emit('commit')">
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="wm-row wm-field">
+                <div>
+                    <label class="wm-label" for="wm-a-fsize">Font Size (px)</label>
+                    <input id="wm-a-fsize" v-model.number="selectedAnnotation.fontSize" type="number" min="8" max="48" class="wm-input wm-tabular" @change="emit('commit')" />
+                </div>
+                <div>
+                    <label class="wm-label" for="wm-a-tcol">Text Color</label>
+                    <input id="wm-a-tcol" v-model="selectedAnnotation.textColor" type="color" class="wm-input" style="padding: 2px" @change="emit('commit')" />
+                </div>
+            </div>
+
+            <div v-if="selectedAnnotation.style === 'card'" class="wm-row wm-field">
+                <div>
+                    <label class="wm-label" for="wm-a-bg">Background</label>
+                    <input id="wm-a-bg" v-model="selectedAnnotation.bgColor" type="color" class="wm-input" style="padding: 2px" @change="emit('commit')" />
+                </div>
+                <div>
+                    <label class="wm-label" for="wm-a-border">Border</label>
+                    <input id="wm-a-border" v-model="selectedAnnotation.borderColor" type="color" class="wm-input" style="padding: 2px" @change="emit('commit')" />
+                </div>
+            </div>
+
+            <!-- Vendor Logo Attachment for Static Label -->
+            <div class="wm-field" style="padding: 8px; border: 1px solid var(--wm-border); border-radius: 6px; background: rgba(15,23,42,0.5)">
+                <span class="wm-label" style="color: var(--wm-primary)">Vendor Logo / Icon (Reusable Folder)</span>
+                <div v-if="selectedAnnotation.iconAssetId" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                    <img
+                        :src="`/weathermap/api/assets/${selectedAnnotation.iconAssetId}`"
+                        alt="Vendor logo preview"
+                        style="width: 36px; height: 36px; object-fit: contain; background: #020617; border: 1px solid var(--wm-border); border-radius: 4px; padding: 3px"
+                    />
+                    <span style="font-size: 12px; color: var(--wm-muted); flex: 1">Asset #{{ selectedAnnotation.iconAssetId }}</span>
+                    <button
+                        type="button"
+                        class="wm-btn wm-btn-danger"
+                        style="min-height: 26px; padding: 2px 8px; font-size: 11px"
+                        @click="selectedAnnotation.iconAssetId = null; emit('commit')"
+                    >
+                        Remove
+                    </button>
+                </div>
+                <button type="button" class="wm-btn" style="width: 100%; margin-bottom: 8px" @click="emit('open-assets', 'vendor')">
+                    Choose / Upload Vendor Logo
+                </button>
+                <div v-if="selectedAnnotation.iconAssetId" class="wm-row">
+                    <div>
+                        <label class="wm-label" for="wm-a-ipos">Logo Position</label>
+                        <select id="wm-a-ipos" v-model="selectedAnnotation.iconPosition" class="wm-select" @change="emit('commit')">
+                            <option value="left">Left of Text</option>
+                            <option value="top">Above Text</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="wm-label" for="wm-a-isize">Logo Size (px)</label>
+                        <input id="wm-a-isize" v-model.number="selectedAnnotation.iconSize" type="number" min="12" max="128" class="wm-input wm-tabular" @change="emit('commit')" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="wm-field">
+                <label class="wm-label" for="wm-a-url">Click URL (optional)</label>
+                <input id="wm-a-url" v-model="selectedAnnotation.infoUrl" class="wm-input" placeholder="https://... or /device/..." @change="emit('commit')" />
+            </div>
         </template>
 
         <!-- Selected Node Inspector -->
@@ -331,6 +448,113 @@ function moveVia(idx: number, delta: -1 | 1): void {
                     <label class="wm-label" for="wm-l-outpos">Out Label Pos ({{ Math.round(selectedLink.outLabelPos * 100) }}%)</label>
                     <input id="wm-l-outpos" v-model.number="selectedLink.outLabelPos" type="range" min="0.1" max="0.9" step="0.05" @change="emit('commit')" />
                 </div>
+            </div>
+
+            <!-- Vendor / Static Label Section -->
+            <div class="wm-field" style="padding: 8px; border: 1px solid var(--wm-border); border-radius: 6px; background: rgba(15,23,42,0.5)">
+                <span class="wm-label" style="color: var(--wm-primary); margin-bottom: 6px">Vendor / Static Label</span>
+
+                <div class="wm-field" style="margin-bottom: 8px">
+                    <label class="wm-label" for="wm-l-slabel">Static Description (ISP, Vendor, CID)</label>
+                    <input
+                        id="wm-l-slabel"
+                        v-model="selectedLink.staticLabel"
+                        class="wm-input"
+                        placeholder="e.g. Telkom Astinet 10G"
+                        @change="emit('commit')"
+                    />
+                </div>
+
+                <div style="margin-bottom: 8px">
+                    <div v-if="selectedLink.vendorIconAssetId" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
+                        <img
+                            :src="`/weathermap/api/assets/${selectedLink.vendorIconAssetId}`"
+                            alt="Vendor logo preview"
+                            style="width: 28px; height: 28px; object-fit: contain; background: #020617; border: 1px solid var(--wm-border); border-radius: 4px; padding: 2px"
+                        />
+                        <span style="font-size: 12px; color: var(--wm-muted); flex: 1">Logo #{{ selectedLink.vendorIconAssetId }}</span>
+                        <button
+                            type="button"
+                            class="wm-btn wm-btn-danger"
+                            style="min-height: 24px; padding: 2px 8px; font-size: 11px"
+                            @click="selectedLink.vendorIconAssetId = null; emit('commit')"
+                        >
+                            Remove
+                        </button>
+                    </div>
+                    <button type="button" class="wm-btn" style="width: 100%; min-height: 30px; font-size: 12px" @click="emit('open-assets', 'vendor')">
+                        Choose / Upload Vendor Logo
+                    </button>
+                </div>
+
+                <template v-if="selectedLink.staticLabel || selectedLink.vendorIconAssetId">
+                    <div class="wm-field" style="margin-bottom: 6px">
+                        <label class="wm-label" for="wm-l-spos">Badge Position ({{ Math.round(selectedLink.staticLabelPos * 100) }}%)</label>
+                        <input
+                            id="wm-l-spos"
+                            v-model.number="selectedLink.staticLabelPos"
+                            type="range"
+                            min="0.05"
+                            max="0.95"
+                            step="0.05"
+                            style="width: 100%"
+                            @change="emit('commit')"
+                        />
+                    </div>
+
+                    <div class="wm-row" style="margin-bottom: 6px">
+                        <div>
+                            <label class="wm-label" for="wm-l-sox">Offset X</label>
+                            <input id="wm-l-sox" v-model.number="selectedLink.staticLabelOffsetX" type="number" min="-400" max="400" class="wm-input wm-tabular" @change="emit('commit')" />
+                        </div>
+                        <div>
+                            <label class="wm-label" for="wm-l-soy">Offset Y</label>
+                            <input id="wm-l-soy" v-model.number="selectedLink.staticLabelOffsetY" type="number" min="-400" max="400" class="wm-input wm-tabular" @change="emit('commit')" />
+                        </div>
+                    </div>
+
+                    <div class="wm-row" style="margin-bottom: 6px">
+                        <div>
+                            <label class="wm-label" for="wm-l-sfsize">Font Size</label>
+                            <input id="wm-l-sfsize" v-model.number="selectedLink.staticLabelFontSize" type="number" min="7" max="24" class="wm-input wm-tabular" @change="emit('commit')" />
+                        </div>
+                        <div v-if="selectedLink.vendorIconAssetId">
+                            <label class="wm-label" for="wm-l-visize">Logo Size (px)</label>
+                            <input id="wm-l-visize" v-model.number="selectedLink.vendorIconSize" type="number" min="12" max="40" class="wm-input wm-tabular" @change="emit('commit')" />
+                        </div>
+                    </div>
+
+                    <div class="wm-row" style="margin-bottom: 6px">
+                        <div>
+                            <label class="wm-label" for="wm-l-sbg">Badge BG</label>
+                            <input id="wm-l-sbg" v-model="selectedLink.staticLabelBgColor" type="color" class="wm-input" style="padding: 2px" @change="emit('commit')" />
+                        </div>
+                        <div>
+                            <label class="wm-label" for="wm-l-stxt">Badge Text</label>
+                            <input id="wm-l-stxt" v-model="selectedLink.staticLabelTextColor" type="color" class="wm-input" style="padding: 2px" @change="emit('commit')" />
+                        </div>
+                    </div>
+
+                    <div style="font-size: 11px; color: var(--wm-muted)">
+                        Tip: Drag the badge directly on the canvas to adjust Offset X/Y.
+                    </div>
+                </template>
+
+                <details style="margin-top: 8px">
+                    <summary style="cursor: pointer; font-size: 12px; color: var(--wm-muted)">
+                        Direction Comments (Out / In)
+                    </summary>
+                    <div style="margin-top: 6px">
+                        <div class="wm-field" style="margin-bottom: 6px">
+                            <label class="wm-label" for="wm-l-outc">Out Comment ({{ selectedLink.a.nodeId }} &rarr; {{ selectedLink.b.nodeId }})</label>
+                            <input id="wm-l-outc" v-model="selectedLink.outComment" class="wm-input" placeholder="Optional note" @change="emit('commit')" />
+                        </div>
+                        <div class="wm-field" style="margin-bottom: 0">
+                            <label class="wm-label" for="wm-l-inc">In Comment ({{ selectedLink.b.nodeId }} &rarr; {{ selectedLink.a.nodeId }})</label>
+                            <input id="wm-l-inc" v-model="selectedLink.inComment" class="wm-input" placeholder="Optional note" @change="emit('commit')" />
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <!-- VIA Waypoints Manager -->
@@ -597,6 +821,12 @@ function moveVia(idx: number, delta: -1 | 1): void {
                     @click="doc.canvas.backgroundAssetId = null; doc.canvas.backgroundAssetUrl = null; emit('commit')"
                 >
                     Remove Background Image
+                </button>
+            </div>
+
+            <div class="wm-field">
+                <button type="button" class="wm-btn" style="width: 100%" @click="emit('open-assets', 'vendor')">
+                    Manage Vendor Logo Folder
                 </button>
             </div>
 

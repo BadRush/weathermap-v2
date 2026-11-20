@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace BadRush\Weathermap\Tests\Feature;
 
 use BadRush\Weathermap\Document\MapDocument;
+use BadRush\Weathermap\Models\WeathermapAsset;
 use BadRush\Weathermap\Models\WeathermapMap;
+use BadRush\Weathermap\Services\AssetStorageService;
 use BadRush\Weathermap\Services\MapRendererService;
 use BadRush\Weathermap\Tests\TestCase;
+use GdImage;
+use Illuminate\Support\Facades\File;
 
 final class ConsoleCommandsTest extends TestCase
 {
@@ -45,5 +49,26 @@ final class ConsoleCommandsTest extends TestCase
         $this->assertNotNull($map);
         $this->assertCount(2, $map->toDocument()->nodes);
         $this->assertCount(2, $map->toDocument()->links);
+    }
+
+    public function test_sync_assets_command_indexes_vendor_folder_idempotently(): void
+    {
+        /** @var AssetStorageService $storage */
+        $storage = $this->app->make(AssetStorageService::class);
+        $dropDir = $storage->vendorDropDir();
+        File::ensureDirectoryExists($dropDir, 0750);
+
+        $im = imagecreatetruecolor(24, 24);
+        $this->assertInstanceOf(GdImage::class, $im);
+        $orange = (int) imagecolorallocate($im, 249, 115, 22);
+        imagefilledrectangle($im, 0, 0, 23, 23, $orange);
+        imagepng($im, $dropDir.'/indosat-logo.png');
+
+        $this->artisan('weathermap:sync-assets')->assertSuccessful();
+        $this->assertSame(1, WeathermapAsset::query()->where('kind', WeathermapAsset::KIND_VENDOR)->count());
+
+        // Second run should remain idempotent
+        $this->artisan('weathermap:sync-assets')->assertSuccessful();
+        $this->assertSame(1, WeathermapAsset::query()->where('kind', WeathermapAsset::KIND_VENDOR)->count());
     }
 }

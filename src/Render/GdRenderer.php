@@ -83,7 +83,7 @@ final class GdRenderer
 
         // 1. Draw Links
         foreach ($scene->links as $link) {
-            $this->drawLink($im, $link);
+            $this->drawLink($im, $link, $assetFileResolver);
         }
 
         // 2. Draw Nodes
@@ -91,12 +91,17 @@ final class GdRenderer
             $this->drawNode($im, $node, $assetFileResolver);
         }
 
-        // 3. Draw Legend
+        // 3. Draw Free-Floating Static Labels (Annotations)
+        foreach ($scene->annotations as $annotation) {
+            $this->drawAnnotation($im, $annotation, $assetFileResolver);
+        }
+
+        // 4. Draw Legend
         if (is_array($scene->legend)) {
             $this->drawLegend($im, $scene->legend);
         }
 
-        // 4. Draw Title & Timestamp
+        // 5. Draw Title & Timestamp
         $title = is_string($scene->canvas['title'] ?? null) ? $scene->canvas['title'] : '';
         if ($title !== '') {
             $titleColor = $this->allocateHex($im, is_string($scene->canvas['titleColor'] ?? null) ? $scene->canvas['titleColor'] : '#f8fafc');
@@ -200,8 +205,9 @@ final class GdRenderer
 
     /**
      * @param  array<string, mixed>  $link
+     * @param  (callable(int): ?string)|null  $assetFileResolver
      */
-    private function drawLink(GdImage $im, array $link): void
+    private function drawLink(GdImage $im, array $link, ?callable $assetFileResolver): void
     {
         $outlineHex = is_string($link['outlineColor'] ?? null) ? $link['outlineColor'] : '#0f172a';
         $outlineColor = $this->allocateHex($im, $outlineHex);
@@ -250,6 +256,225 @@ final class GdRenderer
                 $this->drawLabelBox($im, $label, $lx, $ly, $fontSize, $fillColor, $outlineColor, $textColor);
             }
         }
+
+        // Pass 3: draw link static vendor badge and optional direction comments
+        $staticBadge = $link['staticBadge'] ?? null;
+        if (is_array($staticBadge)) {
+            $this->drawLinkStaticBadge($im, $staticBadge, $assetFileResolver);
+        }
+
+        $commentBg = $this->allocateHex($im, '#0f172a');
+        $commentText = $this->allocateHex($im, '#cbd5e1');
+        $commentFontSize = max(7, $fontSize - 1);
+        foreach ([['outComment', 'outCommentPos'], ['inComment', 'inCommentPos']] as [$textKey, $posKey]) {
+            $comment = is_string($link[$textKey] ?? null) ? trim($link[$textKey]) : '';
+            $pos = is_array($link[$posKey] ?? null) ? $link[$posKey] : null;
+            if ($comment !== '' && $pos !== null) {
+                $cx = (int) round((float) ($pos['x'] ?? 0));
+                $cy = (int) round((float) ($pos['y'] ?? 0));
+                $this->drawLabelBox($im, $comment, $cx, $cy, $commentFontSize, $commentBg, $outlineColor, $commentText);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $badge
+     * @param  (callable(int): ?string)|null  $assetFileResolver
+     */
+    private function drawLinkStaticBadge(GdImage $im, array $badge, ?callable $assetFileResolver): void
+    {
+        $pos = is_array($badge['pos'] ?? null) ? $badge['pos'] : null;
+        if ($pos === null) {
+            return;
+        }
+
+        $text = is_string($badge['text'] ?? null) ? $badge['text'] : '';
+        $fontSize = max(7, min(24, (int) ($badge['fontSize'] ?? 10)));
+        $iconSize = max(12, min(40, (int) ($badge['iconSize'] ?? 16)));
+        $iconAssetId = $badge['iconAssetId'] ?? null;
+
+        $iconImg = null;
+        if (is_int($iconAssetId) && $assetFileResolver !== null) {
+            $path = $assetFileResolver($iconAssetId);
+            if (is_string($path) && is_file($path)) {
+                $iconImg = $this->loadImageFile($path);
+            }
+        }
+
+        $hasIcon = $iconImg instanceof GdImage;
+        $hasText = $text !== '';
+        if (! $hasIcon && ! $hasText) {
+            return;
+        }
+
+        [$tw, $th] = $hasText ? $this->measureText($text, $fontSize, bold: true) : [0, 0];
+        $gap = ($hasIcon && $hasText) ? 5 : 0;
+        $iconW = $hasIcon ? $iconSize : 0;
+        $iconH = $hasIcon ? $iconSize : 0;
+
+        $padX = 6;
+        $padY = 4;
+        $boxW = $iconW + $gap + $tw + ($padX * 2);
+        $boxH = max($iconH, $th) + ($padY * 2);
+
+        $cx = (int) round((float) ($pos['x'] ?? 0));
+        $cy = (int) round((float) ($pos['y'] ?? 0));
+        $x1 = (int) round($cx - ($boxW / 2.0));
+        $y1 = (int) round($cy - ($boxH / 2.0));
+        $x2 = $x1 + $boxW;
+        $y2 = $y1 + $boxH;
+
+        $bgColor = $this->allocateHex($im, is_string($badge['bgColor'] ?? null) ? $badge['bgColor'] : '#0f172a');
+        $borderColor = $this->allocateHex($im, is_string($badge['borderColor'] ?? null) ? $badge['borderColor'] : '#334155');
+        $textColor = $this->allocateHex($im, is_string($badge['textColor'] ?? null) ? $badge['textColor'] : '#e2e8f0');
+
+        imagefilledrectangle($im, $x1, $y1, $x2, $y2, $bgColor);
+        imagerectangle($im, $x1, $y1, $x2, $y2, $borderColor);
+
+        if ($iconImg instanceof GdImage) {
+            $ix = $x1 + $padX;
+            $iy = (int) round($cy - ($iconH / 2.0));
+            $this->drawResampledContain($im, $iconImg, $ix, $iy, $iconSize, $iconSize);
+        }
+
+        if ($hasText) {
+            $textCenterX = (int) round($x1 + $padX + $iconW + $gap + ($tw / 2.0));
+            $this->drawText($im, $text, $textCenterX, $cy, $fontSize, $textColor, bold: true, centered: true);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $annotation
+     * @param  (callable(int): ?string)|null  $assetFileResolver
+     */
+    private function drawAnnotation(GdImage $im, array $annotation, ?callable $assetFileResolver): void
+    {
+        $rawLines = $annotation['lines'] ?? [];
+        $lines = [];
+        if (is_array($rawLines)) {
+            foreach ($rawLines as $line) {
+                if (is_string($line)) {
+                    $lines[] = $line;
+                }
+            }
+        }
+
+        $iconAssetId = $annotation['iconAssetId'] ?? null;
+        $iconImg = null;
+        if (is_int($iconAssetId) && $assetFileResolver !== null) {
+            $path = $assetFileResolver($iconAssetId);
+            if (is_string($path) && is_file($path)) {
+                $iconImg = $this->loadImageFile($path);
+            }
+        }
+
+        $hasIcon = $iconImg instanceof GdImage;
+        $hasText = $lines !== [];
+        if (! $hasIcon && ! $hasText) {
+            return;
+        }
+
+        $ax = (int) round((float) ($annotation['x'] ?? 100));
+        $ay = (int) round((float) ($annotation['y'] ?? 100));
+        $style = is_string($annotation['style'] ?? null) ? $annotation['style'] : 'card';
+        $align = is_string($annotation['align'] ?? null) ? $annotation['align'] : 'left';
+        $fontSize = max(8, min(48, (int) ($annotation['fontSize'] ?? 12)));
+        $iconPosition = is_string($annotation['iconPosition'] ?? null) ? $annotation['iconPosition'] : 'left';
+        $iconSize = max(12, min(128, (int) ($annotation['iconSize'] ?? 24)));
+
+        $lineHeight = max($fontSize + 4, (int) round($fontSize * 1.4));
+        $lineWidths = [];
+        $maxLineW = 0;
+        foreach ($lines as $line) {
+            if ($line === '') {
+                $lineWidths[] = 0;
+
+                continue;
+            }
+            [$lw] = $this->measureText($line, $fontSize, bold: false);
+            $lineWidths[] = $lw;
+            if ($lw > $maxLineW) {
+                $maxLineW = $lw;
+            }
+        }
+
+        $textBlockW = $maxLineW;
+        $textBlockH = $hasText ? (count($lines) * $lineHeight) : 0;
+        $padX = $style === 'card' ? 10 : 2;
+        $padY = $style === 'card' ? 8 : 2;
+        $gap = ($hasIcon && $hasText) ? 8 : 0;
+
+        if ($iconPosition === 'top') {
+            $innerW = max($hasIcon ? $iconSize : 0, $textBlockW);
+            $innerH = ($hasIcon ? $iconSize : 0) + $gap + $textBlockH;
+        } else {
+            $innerW = ($hasIcon ? $iconSize : 0) + $gap + $textBlockW;
+            $innerH = max($hasIcon ? $iconSize : 0, $textBlockH);
+        }
+
+        $boxW = $innerW + ($padX * 2);
+        $boxH = $innerH + ($padY * 2);
+
+        if ($style === 'card') {
+            $bgColor = $this->allocateHex($im, is_string($annotation['bgColor'] ?? null) ? $annotation['bgColor'] : '#1e293b');
+            $borderColor = $this->allocateHex($im, is_string($annotation['borderColor'] ?? null) ? $annotation['borderColor'] : '#475569');
+            imagefilledrectangle($im, $ax, $ay, $ax + $boxW, $ay + $boxH, $bgColor);
+            imagerectangle($im, $ax, $ay, $ax + $boxW, $ay + $boxH, $borderColor);
+        }
+
+        if ($iconImg instanceof GdImage) {
+            if ($iconPosition === 'top') {
+                $ix = match ($align) {
+                    'center' => $ax + $padX + (int) round(($innerW - $iconSize) / 2.0),
+                    'right' => $ax + $padX + $innerW - $iconSize,
+                    default => $ax + $padX,
+                };
+                $iy = $ay + $padY;
+            } else {
+                $ix = $ax + $padX;
+                $iy = $ay + $padY + (int) round(($innerH - $iconSize) / 2.0);
+            }
+            $this->drawResampledContain($im, $iconImg, $ix, $iy, $iconSize, $iconSize);
+        }
+
+        if ($hasText) {
+            $textColor = $this->allocateHex($im, is_string($annotation['textColor'] ?? null) ? $annotation['textColor'] : '#f8fafc');
+            if ($iconPosition === 'top') {
+                $textOriginX = $ax + $padX;
+                $textAreaW = $innerW;
+                $textOriginY = $ay + $padY + ($hasIcon ? $iconSize + $gap : 0);
+            } else {
+                $textOriginX = $ax + $padX + ($hasIcon ? $iconSize + $gap : 0);
+                $textAreaW = $textBlockW;
+                $textOriginY = $ay + $padY + (int) round(($innerH - $textBlockH) / 2.0);
+            }
+
+            foreach ($lines as $idx => $line) {
+                if ($line === '') {
+                    continue;
+                }
+                $lw = $lineWidths[$idx] ?? 0;
+                $lineCenterY = $textOriginY + (int) round(($idx + 0.5) * $lineHeight);
+                $lineCenterX = match ($align) {
+                    'center' => $textOriginX + (int) round($textAreaW / 2.0),
+                    'right' => $textOriginX + $textAreaW - (int) round($lw / 2.0),
+                    default => $textOriginX + (int) round($lw / 2.0),
+                };
+                $this->drawText($im, $line, $lineCenterX, $lineCenterY, $fontSize, $textColor, bold: false, centered: true);
+            }
+        }
+    }
+
+    private function drawResampledContain(GdImage $dst, GdImage $src, int $x, int $y, int $boxW, int $boxH): void
+    {
+        $srcW = max(1, imagesx($src));
+        $srcH = max(1, imagesy($src));
+        $scale = min($boxW / $srcW, $boxH / $srcH);
+        $drawW = max(1, (int) round($srcW * $scale));
+        $drawH = max(1, (int) round($srcH * $scale));
+        $offsetX = $x + (int) round(($boxW - $drawW) / 2.0);
+        $offsetY = $y + (int) round(($boxH - $drawH) / 2.0);
+        imagecopyresampled($dst, $src, $offsetX, $offsetY, 0, 0, $drawW, $drawH, $srcW, $srcH);
     }
 
     /**

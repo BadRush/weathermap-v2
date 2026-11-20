@@ -50,7 +50,9 @@ Route::middleware(['web', 'auth'])->prefix('weathermap')->name('weathermap.')->g
 
         Route::get('/assets', [AssetController::class, 'index'])->name('assets.index');
         Route::post('/assets', [AssetController::class, 'store'])->name('assets.store');
+        Route::post('/assets/sync-vendors', [AssetController::class, 'syncVendors'])->name('assets.sync-vendors');
         Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+        Route::delete('/assets/{asset}', [AssetController::class, 'destroy'])->name('assets.destroy');
 
         Route::post('/import', [ImportController::class, 'store'])->name('import');
     });

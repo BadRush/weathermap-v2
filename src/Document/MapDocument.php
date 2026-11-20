@@ -12,6 +12,7 @@ final readonly class MapDocument
      * @param  list<NodeDef>  $nodes
      * @param  list<LinkDef>  $links
      * @param  list<ScaleDef>  $scales
+     * @param  list<AnnotationDef>  $annotations
      */
     public function __construct(
         public int $schemaVersion = self::CURRENT_SCHEMA_VERSION,
@@ -21,6 +22,7 @@ final readonly class MapDocument
         public array $scales = [],
         public LegendDef $legend = new LegendDef,
         public MapSettings $settings = new MapSettings,
+        public array $annotations = [],
     ) {}
 
     public static function empty(string $title = 'New Weathermap'): self
@@ -33,6 +35,7 @@ final readonly class MapDocument
             scales: [ScaleDef::classicDefault()],
             legend: new LegendDef,
             settings: new MapSettings,
+            annotations: [],
         );
     }
 
@@ -73,6 +76,15 @@ final readonly class MapDocument
             $scales = [ScaleDef::classicDefault()];
         }
 
+        $annotations = [];
+        if (isset($migrated['annotations']) && is_array($migrated['annotations'])) {
+            foreach ($migrated['annotations'] as $annotation) {
+                if (is_array($annotation)) {
+                    $annotations[] = AnnotationDef::fromArray($annotation);
+                }
+            }
+        }
+
         return new self(
             schemaVersion: (int) ($migrated['schemaVersion'] ?? self::CURRENT_SCHEMA_VERSION),
             canvas: CanvasConfig::fromArray(is_array($migrated['canvas'] ?? null) ? $migrated['canvas'] : []),
@@ -81,6 +93,7 @@ final readonly class MapDocument
             scales: $scales,
             legend: LegendDef::fromArray(is_array($migrated['legend'] ?? null) ? $migrated['legend'] : []),
             settings: MapSettings::fromArray(is_array($migrated['settings'] ?? null) ? $migrated['settings'] : null),
+            annotations: $annotations,
         );
     }
 
@@ -119,6 +132,7 @@ final readonly class MapDocument
             'scales' => array_map(static fn (ScaleDef $s): array => $s->toArray(), $this->scales),
             'legend' => $this->legend->toArray(),
             'settings' => $this->settings->toArray(),
+            'annotations' => array_map(static fn (AnnotationDef $a): array => $a->toArray(), $this->annotations),
         ];
     }
 }

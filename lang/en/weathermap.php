@@ -23,6 +23,8 @@ return [
     'default_rrd_period' => 'Default RRD Fetch Period (seconds)',
     'editor_roles' => 'Additional Editor Roles (comma-separated)',
     'editor_roles_help' => 'Administrators and users with the "weathermap.edit" permission can always edit maps.',
+    'timezone' => 'Map Timestamp Timezone (IANA)',
+    'timezone_help' => 'Defaults to Asia/Jakarta (WIB). Examples: Asia/Jakarta (WIB), Asia/Makassar (WITA), Asia/Jayapura (WIT), UTC.',
     'png_rendering' => 'Enable Scheduled PNG Rendering (every 5 minutes)',
     'save_settings' => 'Save Settings',
 ];

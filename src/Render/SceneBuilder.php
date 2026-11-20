@@ -6,6 +6,7 @@ namespace BadRush\Weathermap\Render;
 
 use BadRush\Weathermap\Data\BandwidthFormatter;
 use BadRush\Weathermap\Data\TargetResolver;
+use BadRush\Weathermap\Document\AnnotationDef;
 use BadRush\Weathermap\Document\CapacityDef;
 use BadRush\Weathermap\Document\LinkDef;
 use BadRush\Weathermap\Document\MapDocument;
@@ -15,18 +16,23 @@ use BadRush\Weathermap\Geometry\LabelPlacer;
 use BadRush\Weathermap\Geometry\LinkPathBuilder;
 use BadRush\Weathermap\Geometry\Point;
 use BadRush\Weathermap\Geometry\ScaleResolver;
+use BadRush\Weathermap\Support\LibreNmsBridge;
 use DateTimeImmutable;
+use DateTimeZone;
+use Throwable;
 
 final class SceneBuilder
 {
     public function __construct(
         private readonly TargetResolver $resolver,
+        private readonly ?string $timezone = null,
     ) {}
 
-    public function build(MapDocument $doc, ?int $now = null): Scene
+    public function build(MapDocument $doc, ?int $now = null, ?string $timezone = null): Scene
     {
         $now ??= time();
-        $timestampText = 'Updated: '.(new DateTimeImmutable('@'.$now))->format('Y-m-d H:i:s T');
+        $tz = self::resolveTimeZone($timezone ?? $this->timezone ?? LibreNmsBridge::timezone());
+        $timestampText = 'Updated: '.(new DateTimeImmutable('@'.$now))->setTimezone($tz)->format('Y-m-d H:i:s T');
 
         // Index nodes by id
         $nodeMap = [];
@@ -93,6 +99,33 @@ final class SceneBuilder
                 ? "/graph.php?id={$reading->primaryPortId}&type=port_bits&legend=no&from=-86400&to=now"
                 : null;
 
+            $staticBadge = null;
+            if ($link->staticLabel !== '' || $link->vendorIconAssetId !== null) {
+                $badgeAnchor = LabelPlacer::onCenterline($paths['centerline'], $link->staticLabelPos);
+                $badgePos = new Point(
+                    $badgeAnchor->x + $link->staticLabelOffsetX,
+                    $badgeAnchor->y + $link->staticLabelOffsetY,
+                );
+                $staticBadge = [
+                    'text' => $link->staticLabel,
+                    'pos' => $badgePos->toArray(),
+                    'fontSize' => $link->staticLabelFontSize,
+                    'bgColor' => $link->staticLabelBgColor,
+                    'textColor' => $link->staticLabelTextColor,
+                    'borderColor' => $link->outlineColor,
+                    'iconAssetId' => $link->vendorIconAssetId,
+                    'iconAssetUrl' => $link->vendorIconAssetId !== null ? "/weathermap/api/assets/{$link->vendorIconAssetId}" : null,
+                    'iconSize' => $link->vendorIconSize,
+                ];
+            }
+
+            $outCommentPos = $link->outComment !== ''
+                ? (new Point($outLabelPt->x, $outLabelPt->y + $link->bwFontSize + 10.0))->toArray()
+                : null;
+            $inCommentPos = $link->inComment !== ''
+                ? (new Point($inLabelPt->x, $inLabelPt->y + $link->bwFontSize + 10.0))->toArray()
+                : null;
+
             $sceneLinks[] = [
                 'id' => $link->id,
                 'nodeA' => $nodeA->id,
@@ -128,6 +161,9 @@ final class SceneBuilder
                 'bwFontSize' => $link->bwFontSize,
                 'inComment' => $link->inComment,
                 'outComment' => $link->outComment,
+                'inCommentPos' => $inCommentPos,
+                'outCommentPos' => $outCommentPos,
+                'staticBadge' => $staticBadge,
                 'isDown' => $reading->isDown,
                 'isStale' => $reading->isStale,
                 'dataTimestamp' => $reading->timestamp,
@@ -197,6 +233,37 @@ final class SceneBuilder
             ];
         }
 
+        // Build free-floating static labels (annotations) sorted by zOrder
+        $sortedAnnotations = $doc->annotations;
+        usort($sortedAnnotations, static fn (AnnotationDef $x, AnnotationDef $y): int => $x->zOrder <=> $y->zOrder);
+
+        $sceneAnnotations = [];
+        foreach ($sortedAnnotations as $ann) {
+            if ($ann->text === '' && $ann->iconAssetId === null) {
+                continue;
+            }
+
+            $sceneAnnotations[] = [
+                'id' => $ann->id,
+                'text' => $ann->text,
+                'lines' => $ann->text !== '' ? explode("\n", $ann->text) : [],
+                'x' => round($ann->x, 3),
+                'y' => round($ann->y, 3),
+                'style' => $ann->style,
+                'align' => $ann->align,
+                'fontSize' => $ann->fontSize,
+                'textColor' => $ann->textColor,
+                'bgColor' => $ann->bgColor,
+                'borderColor' => $ann->borderColor,
+                'iconAssetId' => $ann->iconAssetId,
+                'iconAssetUrl' => $ann->iconAssetId !== null ? "/weathermap/api/assets/{$ann->iconAssetId}" : null,
+                'iconPosition' => $ann->iconPosition,
+                'iconSize' => $ann->iconSize,
+                'infoUrl' => $ann->infoUrl,
+                'zOrder' => $ann->zOrder,
+            ];
+        }
+
         // Build legend
         $legendData = null;
         if ($doc->legend->visible) {
@@ -238,7 +305,22 @@ final class SceneBuilder
             links: $sceneLinks,
             legend: $legendData,
             refreshSeconds: $doc->settings->refreshSeconds,
+            annotations: $sceneAnnotations,
         );
+    }
+
+    private static function resolveTimeZone(string $name): DateTimeZone
+    {
+        $trimmed = trim($name);
+        if ($trimmed !== '') {
+            try {
+                return new DateTimeZone($trimmed);
+            } catch (Throwable) {
+                // Fall back to default WIB timezone below
+            }
+        }
+
+        return new DateTimeZone(LibreNmsBridge::DEFAULT_TIMEZONE);
     }
 
     private static function pairKey(string $a, string $b): string

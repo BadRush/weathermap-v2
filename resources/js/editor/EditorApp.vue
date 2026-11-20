@@ -17,9 +17,12 @@ import {
     rgbToHex,
     snapOrthogonal,
 } from '../shared/geometry';
+import { layoutAnnotation, layoutStaticBadge } from '../shared/layout';
 import type {
     AccessRule,
+    AnnotationDef,
     AssetItem,
+    AssetKind,
     LegendDef,
     LinkDef,
     MapDetail,
@@ -39,7 +42,7 @@ const props = defineProps<{
     mapId: number;
 }>();
 
-type ToolMode = 'select' | 'add-node' | 'add-link';
+type ToolMode = 'select' | 'add-node' | 'add-link' | 'add-text';
 
 const mapName = ref('');
 const revision = ref(1);
@@ -55,6 +58,7 @@ const errorBanner = ref<string | null>(null);
 const tool = ref<ToolMode>('select');
 const selectedNodeIds = ref<string[]>([]);
 const selectedLinkId = ref<string | null>(null);
+const selectedAnnotationId = ref<string | null>(null);
 const selectedViaIndex = ref<number | null>(null);
 const linkStartNodeId = ref<string | null>(null);
 const newLinkViaStyle = ref<'angled' | 'curved'>('angled');
@@ -73,13 +77,15 @@ const dragState = ref<
     | null
     | { kind: 'nodes'; startSvg: Point; initialPositions: Record<string, Point> }
     | { kind: 'via'; linkId: string; viaIndex: number }
+    | { kind: 'link-badge'; linkId: string; anchor: Point; pointerOffset: Point }
+    | { kind: 'annotation'; annotationId: string; offset: Point }
     | { kind: 'legend'; offset: Point }
     | { kind: 'marquee'; start: Point; current: Point }
 >(null);
 
 const scaleModalOpen = ref(false);
 const assetsModalOpen = ref(false);
-const assetsModalKind = ref<'background' | 'icon'>('background');
+const assetsModalKind = ref<AssetKind>('background');
 const importModalOpen = ref(false);
 const accessModalOpen = ref(false);
 const conflictDialogRef = ref<HTMLDialogElement | null>(null);
@@ -108,6 +114,11 @@ const selectedLink = computed<LinkDef | null>(() => {
     return doc.value.links.find((l) => l.id === selectedLinkId.value) ?? null;
 });
 
+const selectedAnnotation = computed<AnnotationDef | null>(() => {
+    if (!doc.value || !selectedAnnotationId.value) return null;
+    return doc.value.annotations.find((a) => a.id === selectedAnnotationId.value) ?? null;
+});
+
 const previewLinks = computed(() => {
     if (!doc.value) return [];
     const nodeMap = new Map(doc.value.nodes.map((n) => [n.id, n]));
@@ -134,17 +145,59 @@ const previewLinks = computed(() => {
             const paths = buildLinkPaths(link, nodeA, nodeB, idx, siblings.length);
             const outPoly = buildArrowPolygon(paths.outSpine, link.width, link.arrowStyle);
             const inPoly = buildArrowPolygon(paths.inSpine, link.width, link.arrowStyle);
+            const outLabelPos = placeLabelOnCenterline(paths.centerline, link.outLabelPos);
+            const inLabelPos = placeLabelOnCenterline(paths.centerline, link.inLabelPos);
+            const badgeAnchor = placeLabelOnCenterline(paths.centerline, link.staticLabelPos ?? 0.5);
+            const hasBadge = Boolean(link.staticLabel) || link.vendorIconAssetId !== null;
+            const badgePos = {
+                x: badgeAnchor.x + (link.staticLabelOffsetX ?? 0),
+                y: badgeAnchor.y + (link.staticLabelOffsetY ?? -18),
+            };
+            const badgeLayout = hasBadge
+                ? layoutStaticBadge(
+                      badgePos.x,
+                      badgePos.y,
+                      link.staticLabel ?? '',
+                      link.staticLabelFontSize ?? 10,
+                      link.vendorIconAssetId !== null,
+                      link.vendorIconSize ?? 16,
+                  )
+                : null;
             return {
                 link,
                 outPoints: polygonToSvgPoints(outPoly),
                 inPoints: polygonToSvgPoints(inPoly),
                 outColor: previewOutColor,
                 inColor: previewInColor,
-                outLabelPos: placeLabelOnCenterline(paths.centerline, link.outLabelPos),
-                inLabelPos: placeLabelOnCenterline(paths.centerline, link.inLabelPos),
+                outLabelPos,
+                inLabelPos,
+                badgeAnchor,
+                badgeLayout,
+                outCommentPos: link.outComment ? { x: outLabelPos.x, y: outLabelPos.y + link.bwFontSize + 10 } : null,
+                inCommentPos: link.inComment ? { x: inLabelPos.x, y: inLabelPos.y + link.bwFontSize + 10 } : null,
             };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null);
+});
+
+const previewAnnotations = computed(() => {
+    if (!doc.value) return [];
+    return doc.value.annotations.map((ann) => {
+        const lines = ann.text ? ann.text.split('\n') : [];
+        return {
+            ann,
+            lines,
+            layout: layoutAnnotation({
+                lines,
+                style: ann.style,
+                align: ann.align,
+                fontSize: ann.fontSize,
+                hasIcon: ann.iconAssetId !== null,
+                iconPosition: ann.iconPosition,
+                iconSize: ann.iconSize,
+            }),
+        };
+    });
 });
 
 const activeLegendScale = computed<ScaleDef>(() => {
@@ -205,8 +258,24 @@ async function loadMap(): Promise<void> {
         revision.value = res.map.revision;
         pngEnabled.value = res.map.png_enabled;
         accessRules.value = res.map.accessRules;
-        doc.value = res.map.document;
-        history = new EditorHistory(res.map.document);
+        const normalizedDoc: MapDocument = {
+            ...res.map.document,
+            annotations: Array.isArray(res.map.document.annotations) ? res.map.document.annotations : [],
+            links: res.map.document.links.map((link) => ({
+                ...link,
+                staticLabel: link.staticLabel ?? '',
+                staticLabelPos: link.staticLabelPos ?? 0.5,
+                staticLabelOffsetX: link.staticLabelOffsetX ?? 0,
+                staticLabelOffsetY: link.staticLabelOffsetY ?? -18,
+                staticLabelFontSize: link.staticLabelFontSize ?? 10,
+                staticLabelBgColor: link.staticLabelBgColor ?? '#0f172a',
+                staticLabelTextColor: link.staticLabelTextColor ?? '#e2e8f0',
+                vendorIconAssetId: link.vendorIconAssetId ?? null,
+                vendorIconSize: link.vendorIconSize ?? 16,
+            })),
+        };
+        doc.value = normalizedDoc;
+        history = new EditorHistory(normalizedDoc);
         historyVersion.value += 1;
         dirty.value = false;
     } catch (e) {
@@ -336,6 +405,41 @@ function onCanvasMouseDown(e: MouseEvent): void {
         });
         selectedNodeIds.value = [id];
         selectedLinkId.value = null;
+        selectedAnnotationId.value = null;
+        tool.value = 'select';
+        commitHistory();
+        return;
+    }
+
+    if (tool.value === 'add-text') {
+        const nextNum = doc.value.annotations.length + 1;
+        let id = `label_${nextNum}`;
+        let suffix = nextNum;
+        while (doc.value.annotations.some((a) => a.id === id)) {
+            suffix += 1;
+            id = `label_${suffix}`;
+        }
+        doc.value.annotations.push({
+            id,
+            text: 'Vendor / Zone Note',
+            x: snap(pt.x),
+            y: snap(pt.y),
+            style: 'card',
+            align: 'left',
+            fontSize: 12,
+            textColor: '#f8fafc',
+            bgColor: '#1e293b',
+            borderColor: '#475569',
+            iconAssetId: null,
+            iconPosition: 'left',
+            iconSize: 24,
+            infoUrl: null,
+            zOrder: 700,
+        });
+        selectedAnnotationId.value = id;
+        selectedNodeIds.value = [];
+        selectedLinkId.value = null;
+        selectedViaIndex.value = null;
         tool.value = 'select';
         commitHistory();
         return;
@@ -362,6 +466,7 @@ function onCanvasMouseDown(e: MouseEvent): void {
     if (tool.value === 'select') {
         selectedNodeIds.value = [];
         selectedLinkId.value = null;
+        selectedAnnotationId.value = null;
         selectedViaIndex.value = null;
         dragState.value = { kind: 'marquee', start: pt, current: pt };
     }
@@ -400,6 +505,15 @@ function onNodeMouseDown(node: NodeDef, e: MouseEvent): void {
                 inComment: '',
                 outComment: '',
                 zOrder: 300,
+                staticLabel: '',
+                staticLabelPos: 0.5,
+                staticLabelOffsetX: 0,
+                staticLabelOffsetY: -18,
+                staticLabelFontSize: 10,
+                staticLabelBgColor: '#0f172a',
+                staticLabelTextColor: '#e2e8f0',
+                vendorIconAssetId: null,
+                vendorIconSize: 16,
             });
             linkStartNodeId.value = null;
             draftLinkWaypoints.value = [];
@@ -407,6 +521,7 @@ function onNodeMouseDown(node: NodeDef, e: MouseEvent): void {
             alignGuides.value = [];
             selectedNodeIds.value = [];
             selectedLinkId.value = id;
+            selectedAnnotationId.value = null;
             selectedViaIndex.value = null;
             tool.value = 'select';
             commitHistory();
@@ -415,6 +530,7 @@ function onNodeMouseDown(node: NodeDef, e: MouseEvent): void {
     }
 
     selectedLinkId.value = null;
+    selectedAnnotationId.value = null;
     selectedViaIndex.value = null;
     if (e.shiftKey) {
         if (selectedNodeIds.value.includes(node.id)) {
@@ -438,6 +554,7 @@ function onLinkClick(link: LinkDef, e: MouseEvent): void {
     e.stopPropagation();
     if (tool.value !== 'select') return;
     selectedNodeIds.value = [];
+    selectedAnnotationId.value = null;
     selectedLinkId.value = link.id;
     selectedViaIndex.value = null;
 }
@@ -451,6 +568,7 @@ function onLinkDoubleClick(link: LinkDef, e: MouseEvent): void {
     selectedLinkId.value = link.id;
     selectedViaIndex.value = segIdx;
     selectedNodeIds.value = [];
+    selectedAnnotationId.value = null;
     commitHistory();
 }
 
@@ -460,6 +578,7 @@ function onMidpointMouseDown(link: LinkDef, segmentIndex: number, pt: Point, e: 
     selectedLinkId.value = link.id;
     selectedViaIndex.value = segmentIndex;
     selectedNodeIds.value = [];
+    selectedAnnotationId.value = null;
     dragState.value = { kind: 'via', linkId: link.id, viaIndex: segmentIndex };
 }
 
@@ -468,7 +587,46 @@ function onViaMouseDown(link: LinkDef, idx: number, e: MouseEvent): void {
     selectedLinkId.value = link.id;
     selectedViaIndex.value = idx;
     selectedNodeIds.value = [];
+    selectedAnnotationId.value = null;
     dragState.value = { kind: 'via', linkId: link.id, viaIndex: idx };
+}
+
+function onLinkBadgeMouseDown(link: LinkDef, anchor: Point, e: MouseEvent): void {
+    if (e.button !== 0 || tool.value !== 'select') return;
+    e.stopPropagation();
+    selectedLinkId.value = link.id;
+    selectedViaIndex.value = null;
+    selectedNodeIds.value = [];
+    selectedAnnotationId.value = null;
+    const pt = clientToSvg(e);
+    const currentCenter = {
+        x: anchor.x + (link.staticLabelOffsetX ?? 0),
+        y: anchor.y + (link.staticLabelOffsetY ?? -18),
+    };
+    dragState.value = {
+        kind: 'link-badge',
+        linkId: link.id,
+        anchor,
+        pointerOffset: {
+            x: pt.x - currentCenter.x,
+            y: pt.y - currentCenter.y,
+        },
+    };
+}
+
+function onAnnotationMouseDown(ann: AnnotationDef, e: MouseEvent): void {
+    if (e.button !== 0 || tool.value !== 'select') return;
+    e.stopPropagation();
+    selectedAnnotationId.value = ann.id;
+    selectedNodeIds.value = [];
+    selectedLinkId.value = null;
+    selectedViaIndex.value = null;
+    const pt = clientToSvg(e);
+    dragState.value = {
+        kind: 'annotation',
+        annotationId: ann.id,
+        offset: { x: pt.x - ann.x, y: pt.y - ann.y },
+    };
 }
 
 function removeViaPoint(link: LinkDef, idx: number, e: MouseEvent): void {
@@ -593,6 +751,22 @@ function onMouseMove(e: MouseEvent): void {
                 alignGuides.value = [];
             }
         }
+    } else if (dragState.value.kind === 'link-badge') {
+        const { linkId, anchor, pointerOffset } = dragState.value;
+        const targetLink = doc.value.links.find((l) => l.id === linkId);
+        if (targetLink) {
+            const targetCenterX = pt.x - pointerOffset.x;
+            const targetCenterY = pt.y - pointerOffset.y;
+            targetLink.staticLabelOffsetX = Math.max(-400, Math.min(400, Math.round(targetCenterX - anchor.x)));
+            targetLink.staticLabelOffsetY = Math.max(-400, Math.min(400, Math.round(targetCenterY - anchor.y)));
+        }
+    } else if (dragState.value.kind === 'annotation') {
+        const annId = dragState.value.annotationId;
+        const ann = doc.value.annotations.find((a) => a.id === annId);
+        if (ann) {
+            ann.x = snap(pt.x - dragState.value.offset.x);
+            ann.y = snap(pt.y - dragState.value.offset.y);
+        }
     } else if (dragState.value.kind === 'legend') {
         doc.value.legend.x = snap(pt.x - dragState.value.offset.x);
         doc.value.legend.y = snap(pt.y - dragState.value.offset.y);
@@ -635,6 +809,12 @@ function onWheel(e: WheelEvent): void {
 
 function deleteSelected(): void {
     if (!doc.value) return;
+    if (selectedAnnotationId.value) {
+        doc.value.annotations = doc.value.annotations.filter((a) => a.id !== selectedAnnotationId.value);
+        selectedAnnotationId.value = null;
+        commitHistory();
+        return;
+    }
     // If a specific VIA waypoint is selected, delete ONLY that waypoint (not the entire link)
     if (selectedLink.value && selectedViaIndex.value !== null) {
         selectedLink.value.via.splice(selectedViaIndex.value, 1);
@@ -658,7 +838,7 @@ function deleteSelected(): void {
     }
 }
 
-function openAssetsModal(kind: 'background' | 'icon'): void {
+function openAssetsModal(kind: AssetKind): void {
     assetsModalKind.value = kind;
     assetsModalOpen.value = true;
 }
@@ -669,6 +849,14 @@ function onAssetSelected(asset: AssetItem): void {
         doc.value.canvas.backgroundAssetId = asset.id;
         doc.value.canvas.backgroundAssetUrl = asset.url;
         commitHistory();
+    } else if (assetsModalKind.value === 'vendor') {
+        if (selectedAnnotation.value) {
+            selectedAnnotation.value.iconAssetId = asset.id;
+            commitHistory();
+        } else if (selectedLink.value) {
+            selectedLink.value.vendorIconAssetId = asset.id;
+            commitHistory();
+        }
     } else if (selectedNode.value) {
         selectedNode.value.iconType = 'asset';
         selectedNode.value.iconAssetId = asset.id;
@@ -771,6 +959,15 @@ onBeforeUnmount(() => {
                 >
                     + Link
                 </button>
+                <button
+                    type="button"
+                    class="wm-btn"
+                    :class="{ 'wm-btn-active': tool === 'add-text' }"
+                    title="Click canvas to place a free-floating static label or vendor note"
+                    @click="tool = 'add-text'; linkStartNodeId = null; draftLinkWaypoints = []; draftCursorPos = null"
+                >
+                    + Text
+                </button>
                 <select
                     v-if="tool === 'add-link'"
                     v-model="newLinkViaStyle"
@@ -824,7 +1021,7 @@ onBeforeUnmount(() => {
                     <svg
                         ref="svgRef"
                         class="wm-editor-svg"
-                        :style="{ cursor: tool === 'add-node' ? 'crosshair' : isPanning ? 'grabbing' : 'default' }"
+                        :style="{ cursor: tool === 'add-node' || tool === 'add-text' ? 'crosshair' : isPanning ? 'grabbing' : 'default' }"
                         @mousedown="onCanvasMouseDown"
                         @mousemove="onMouseMove"
                         @mouseup="onMouseUp"
@@ -923,6 +1120,74 @@ onBeforeUnmount(() => {
                                     />
                                     <text :x="item.inLabelPos.x" :y="item.inLabelPos.y" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="700" fill="#0f172a">
                                         50%
+                                    </text>
+                                </g>
+
+                                <!-- Optional Direction Comments Preview -->
+                                <g v-if="item.link.outComment && item.outCommentPos" pointer-events="none">
+                                    <text
+                                        :x="item.outCommentPos.x"
+                                        :y="item.outCommentPos.y"
+                                        text-anchor="middle"
+                                        dominant-baseline="central"
+                                        font-size="8"
+                                        fill="#cbd5e1"
+                                    >
+                                        {{ item.link.outComment }}
+                                    </text>
+                                </g>
+                                <g v-if="item.link.inComment && item.inCommentPos" pointer-events="none">
+                                    <text
+                                        :x="item.inCommentPos.x"
+                                        :y="item.inCommentPos.y"
+                                        text-anchor="middle"
+                                        dominant-baseline="central"
+                                        font-size="8"
+                                        fill="#cbd5e1"
+                                    >
+                                        {{ item.link.inComment }}
+                                    </text>
+                                </g>
+
+                                <!-- Draggable Link Vendor / Static Badge Preview -->
+                                <g
+                                    v-if="item.badgeLayout"
+                                    style="cursor: move"
+                                    @mousedown="onLinkBadgeMouseDown(item.link, item.badgeAnchor, $event)"
+                                    @dblclick.stop
+                                >
+                                    <rect
+                                        :x="item.badgeLayout.boxX"
+                                        :y="item.badgeLayout.boxY"
+                                        :width="item.badgeLayout.boxW"
+                                        :height="item.badgeLayout.boxH"
+                                        rx="4"
+                                        :fill="item.link.staticLabelBgColor || '#0f172a'"
+                                        :stroke="selectedLinkId === item.link.id ? '#38bdf8' : item.link.outlineColor"
+                                        :stroke-width="selectedLinkId === item.link.id ? 1.5 : 1"
+                                    />
+                                    <image
+                                        v-if="item.badgeLayout.hasIcon && item.link.vendorIconAssetId"
+                                        :href="`/weathermap/api/assets/${item.link.vendorIconAssetId}`"
+                                        :x="item.badgeLayout.iconX"
+                                        :y="item.badgeLayout.iconY"
+                                        :width="item.badgeLayout.iconSize"
+                                        :height="item.badgeLayout.iconSize"
+                                        preserveAspectRatio="xMidYMid meet"
+                                        pointer-events="none"
+                                    />
+                                    <text
+                                        v-if="item.badgeLayout.hasText"
+                                        :x="item.badgeLayout.textX"
+                                        :y="item.badgeLayout.textY"
+                                        text-anchor="middle"
+                                        dominant-baseline="central"
+                                        :font-size="item.link.staticLabelFontSize || 10"
+                                        font-weight="700"
+                                        :fill="item.link.staticLabelTextColor || '#e2e8f0'"
+                                        pointer-events="none"
+                                    >
+                                        {{ item.link.staticLabel }}
                                     </text>
                                 </g>
 
@@ -1088,6 +1353,52 @@ onBeforeUnmount(() => {
                                 </text>
                             </g>
 
+                            <!-- Draggable Free-Floating Static Labels (Annotations) -->
+                            <g
+                                v-for="item in previewAnnotations"
+                                :key="item.ann.id"
+                                :transform="`translate(${item.ann.x}, ${item.ann.y})`"
+                                style="cursor: grab"
+                                @mousedown="onAnnotationMouseDown(item.ann, $event)"
+                            >
+                                <rect
+                                    x="0"
+                                    y="0"
+                                    :width="item.layout.boxW"
+                                    :height="item.layout.boxH"
+                                    rx="6"
+                                    :fill="item.ann.style === 'card' ? item.ann.bgColor : 'transparent'"
+                                    :stroke="selectedAnnotationId === item.ann.id ? '#38bdf8' : item.ann.style === 'card' ? item.ann.borderColor : 'rgba(148,163,184,0.35)'"
+                                    :stroke-width="selectedAnnotationId === item.ann.id ? 2 : 1"
+                                    :stroke-dasharray="item.ann.style === 'plain' ? '4 3' : undefined"
+                                />
+                                <image
+                                    v-if="item.layout.hasIcon && item.ann.iconAssetId"
+                                    :href="`/weathermap/api/assets/${item.ann.iconAssetId}`"
+                                    :x="item.layout.iconX"
+                                    :y="item.layout.iconY"
+                                    :width="item.layout.iconSize"
+                                    :height="item.layout.iconSize"
+                                    preserveAspectRatio="xMidYMid meet"
+                                    pointer-events="none"
+                                />
+                                <template v-if="item.layout.hasText">
+                                    <text
+                                        v-for="(line, lineIdx) in item.lines"
+                                        :key="lineIdx"
+                                        :x="item.layout.textX"
+                                        :y="item.layout.textStartY + lineIdx * item.layout.lineHeight"
+                                        :text-anchor="item.layout.textAnchor"
+                                        dominant-baseline="central"
+                                        :font-size="item.ann.fontSize"
+                                        :fill="item.ann.textColor"
+                                        pointer-events="none"
+                                    >
+                                        {{ line }}
+                                    </text>
+                                </template>
+                            </g>
+
                             <!-- Draggable Legend Preview -->
                             <g
                                 v-if="doc.legend.visible"
@@ -1149,6 +1460,7 @@ onBeforeUnmount(() => {
                     :doc="doc"
                     :selected-node="selectedNode"
                     :selected-link="selectedLink"
+                    :selected-annotation="selectedAnnotation"
                     :selected-via-index="selectedViaIndex"
                     :multi-count="selectedNodeIds.length"
                     :png-enabled="pngEnabled"

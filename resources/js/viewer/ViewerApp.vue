@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import SceneSvg from '../components/SceneSvg.vue';
 import { apiGet } from '../shared/api';
+import { computeFitZoom } from '../shared/layout';
 import type { Scene, SceneLink, SceneNode } from '../shared/types';
 
 const props = defineProps<{
@@ -17,10 +18,36 @@ const zoom = ref<number | undefined>(undefined);
 const secondsLeft = ref(60);
 const graphFailed = ref<Record<string, boolean>>({});
 
+const stageRef = ref<HTMLElement | null>(null);
+const stageSize = ref<{ width: number; height: number }>({ width: 0, height: 0 });
+
 const hoveredLink = ref<{ link: SceneLink; x: number; y: number } | null>(null);
 const hoveredNode = ref<{ node: SceneNode; x: number; y: number } | null>(null);
 
 let tickHandle: number | null = null;
+let resizeObserver: ResizeObserver | null = null;
+
+const fitZoom = computed<number | undefined>(() => {
+    if (!scene.value) return undefined;
+    return computeFitZoom(
+        scene.value.canvas.width,
+        scene.value.canvas.height,
+        stageSize.value.width,
+        stageSize.value.height,
+    );
+});
+
+const effectiveZoom = computed<number | undefined>(() => zoom.value ?? fitZoom.value);
+const displayZoomPercent = computed(() => Math.round((effectiveZoom.value ?? 1) * 100));
+
+function measureStage(): void {
+    const el = stageRef.value;
+    if (!el) return;
+    stageSize.value = {
+        width: el.clientWidth,
+        height: el.clientHeight,
+    };
+}
 
 async function fetchScene(): Promise<void> {
     try {
@@ -28,6 +55,7 @@ async function fetchScene(): Promise<void> {
         scene.value = data.scene;
         secondsLeft.value = data.scene.refreshSeconds;
         errorMsg.value = null;
+        measureStage();
     } catch (e) {
         errorMsg.value = e instanceof Error ? e.message : 'Failed to load map scene.';
     } finally {
@@ -44,7 +72,7 @@ function handleHoverLink(payload: { link: SceneLink; event: MouseEvent } | null)
     hoveredLink.value = {
         link: payload.link,
         x: Math.min(window.innerWidth - 360, payload.event.clientX + 16),
-        y: Math.min(window.innerHeight - 240, payload.event.clientY + 16),
+        y: Math.min(window.innerHeight - 260, payload.event.clientY + 16),
     };
 }
 
@@ -68,11 +96,28 @@ function onVisibilityChange(): void {
 }
 
 function adjustZoom(delta: number): void {
-    const current = zoom.value ?? 1;
-    zoom.value = Math.max(0.4, Math.min(2.5, Math.round((current + delta) * 10) / 10));
+    const current = zoom.value ?? fitZoom.value ?? 1;
+    zoom.value = Math.max(0.25, Math.min(3, Math.round((current + delta) * 100) / 100));
+}
+
+function resetFit(): void {
+    zoom.value = undefined;
+    measureStage();
+}
+
+function onWheel(e: WheelEvent): void {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    adjustZoom(e.deltaY < 0 ? 0.1 : -0.1);
 }
 
 onMounted(() => {
+    measureStage();
+    if (typeof ResizeObserver !== 'undefined' && stageRef.value) {
+        resizeObserver = new ResizeObserver(() => measureStage());
+        resizeObserver.observe(stageRef.value);
+    }
+    window.addEventListener('resize', measureStage);
     void fetchScene();
     document.addEventListener('visibilitychange', onVisibilityChange);
     tickHandle = window.setInterval(() => {
@@ -85,6 +130,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    resizeObserver?.disconnect();
+    window.removeEventListener('resize', measureStage);
     document.removeEventListener('visibilitychange', onVisibilityChange);
     if (tickHandle !== null) {
         window.clearInterval(tickHandle);
@@ -102,7 +149,24 @@ onBeforeUnmount(() => {
             </span>
             <div class="wm-spacer" />
             <button type="button" class="wm-btn" aria-label="Zoom out" @click="adjustZoom(-0.15)">-</button>
-            <button type="button" class="wm-btn" @click="zoom = undefined">Fit</button>
+            <button
+                type="button"
+                class="wm-btn"
+                :class="{ 'wm-btn-active': zoom === undefined }"
+                title="Fit map to viewport"
+                @click="resetFit"
+            >
+                Fit
+            </button>
+            <button
+                type="button"
+                class="wm-btn wm-tabular"
+                :class="{ 'wm-btn-active': zoom === 1 }"
+                title="Reset to 100% native size"
+                @click="zoom = 1"
+            >
+                {{ displayZoomPercent }}%
+            </button>
             <button type="button" class="wm-btn" aria-label="Zoom in" @click="adjustZoom(0.15)">+</button>
             <button type="button" class="wm-btn" :disabled="loading" @click="fetchScene">Refresh</button>
             <a class="wm-btn" :href="`/weathermap/maps/${mapId}.png`" target="_blank" rel="noopener">PNG</a>
@@ -110,7 +174,7 @@ onBeforeUnmount(() => {
             <a v-if="canEdit" class="wm-btn wm-btn-primary" :href="`/weathermap/maps/${mapId}/edit`">Edit Map</a>
         </header>
 
-        <main class="wm-viewer-stage">
+        <main ref="stageRef" class="wm-viewer-stage" @wheel="onWheel">
             <div v-if="loading && !scene" class="wm-skeleton" style="width: 100%; height: 520px" />
 
             <div v-else-if="errorMsg && !scene" class="wm-error-box" role="alert">
@@ -121,20 +185,34 @@ onBeforeUnmount(() => {
             <div v-else-if="scene" class="wm-canvas-scroll">
                 <SceneSvg
                     :scene="scene"
-                    :zoom="zoom"
+                    :zoom="effectiveZoom"
                     @hover-link="handleHoverLink"
                     @hover-node="handleHoverNode"
                 />
             </div>
         </main>
 
-        <!-- Link Tooltip with Mini Graph -->
+        <!-- Link Tooltip with Vendor Badge & Mini Graph -->
         <div
             v-if="hoveredLink"
             class="wm-tooltip wm-tabular"
             :style="{ left: `${hoveredLink.x}px`, top: `${hoveredLink.y}px` }"
             role="status"
         >
+            <div
+                v-if="hoveredLink.link.staticBadge && (hoveredLink.link.staticBadge.text || hoveredLink.link.staticBadge.iconAssetUrl)"
+                style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--wm-border)"
+            >
+                <img
+                    v-if="hoveredLink.link.staticBadge.iconAssetUrl"
+                    :src="hoveredLink.link.staticBadge.iconAssetUrl"
+                    alt=""
+                    style="width: 18px; height: 18px; object-fit: contain; flex: 0 0 auto"
+                />
+                <span style="font-weight: 700; color: var(--wm-primary); font-size: 12px">
+                    {{ hoveredLink.link.staticBadge.text || 'Vendor Link' }}
+                </span>
+            </div>
             <div style="font-weight: 700; margin-bottom: 6px; font-size: 13px">
                 {{ hoveredLink.link.portLabel || `${hoveredLink.link.nodeA} ↔ ${hoveredLink.link.nodeB}` }}
             </div>
@@ -192,24 +270,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .wm-viewer-shell {
-    min-height: calc(100vh - 60px);
+    height: calc(100vh - 56px);
+    min-height: 480px;
     display: flex;
     flex-direction: column;
 }
 .wm-viewer-stage {
     flex: 1 1 auto;
+    min-height: 0;
     padding: 16px;
     display: flex;
-    justify-content: center;
-    align-items: flex-start;
     overflow: auto;
 }
 .wm-canvas-scroll {
-    max-width: 100%;
-    overflow: auto;
+    margin: auto;
+    flex: 0 0 auto;
     border-radius: 10px;
     border: 1px solid var(--wm-border);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
 }
 .wm-tt-grid {
     display: grid;
@@ -217,6 +296,7 @@ onBeforeUnmount(() => {
     gap: 4px 12px;
 }
 .wm-error-box {
+    margin: auto;
     padding: 24px;
     border: 1px solid var(--wm-danger);
     border-radius: 10px;

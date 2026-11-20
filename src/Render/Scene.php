@@ -15,6 +15,7 @@ final readonly class Scene
      * @param  list<array<string, mixed>>  $nodes
      * @param  list<array<string, mixed>>  $links
      * @param  array<string, mixed>|null  $legend
+     * @param  list<array<string, mixed>>  $annotations
      */
     public function __construct(
         public int $generatedAt,
@@ -24,6 +25,7 @@ final readonly class Scene
         public array $links,
         public ?array $legend,
         public int $refreshSeconds,
+        public array $annotations = [],
     ) {}
 
     /**
@@ -37,6 +39,7 @@ final readonly class Scene
             'canvas' => $this->canvas,
             'nodes' => $this->nodes,
             'links' => $this->links,
+            'annotations' => $this->annotations,
             'legend' => $this->legend,
             'refreshSeconds' => $this->refreshSeconds,
         ];

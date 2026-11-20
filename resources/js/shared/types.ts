@@ -99,6 +99,24 @@ export interface CapacityDef {
     outBps: number;
 }
 
+export interface AnnotationDef {
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    style: 'plain' | 'card';
+    align: 'left' | 'center' | 'right';
+    fontSize: number;
+    textColor: string;
+    bgColor: string;
+    borderColor: string;
+    iconAssetId: number | null;
+    iconPosition: 'left' | 'top';
+    iconSize: number;
+    infoUrl: string | null;
+    zOrder: number;
+}
+
 export interface LinkDef {
     id: string;
     a: LinkEndpoint;
@@ -120,6 +138,15 @@ export interface LinkDef {
     inComment: string;
     outComment: string;
     zOrder: number;
+    staticLabel: string;
+    staticLabelPos: number;
+    staticLabelOffsetX: number;
+    staticLabelOffsetY: number;
+    staticLabelFontSize: number;
+    staticLabelBgColor: string;
+    staticLabelTextColor: string;
+    vendorIconAssetId: number | null;
+    vendorIconSize: number;
 }
 
 export interface MapSettings {
@@ -135,9 +162,42 @@ export interface MapDocument {
     canvas: CanvasConfig;
     nodes: NodeDef[];
     links: LinkDef[];
+    annotations: AnnotationDef[];
     scales: ScaleDef[];
     legend: LegendDef;
     settings: MapSettings;
+}
+
+export interface SceneStaticBadge {
+    text: string;
+    pos: Point;
+    fontSize: number;
+    bgColor: string;
+    textColor: string;
+    borderColor: string;
+    iconAssetId: number | null;
+    iconAssetUrl: string | null;
+    iconSize: number;
+}
+
+export interface SceneAnnotation {
+    id: string;
+    text: string;
+    lines: string[];
+    x: number;
+    y: number;
+    style: 'plain' | 'card';
+    align: 'left' | 'center' | 'right';
+    fontSize: number;
+    textColor: string;
+    bgColor: string;
+    borderColor: string;
+    iconAssetId: number | null;
+    iconAssetUrl: string | null;
+    iconPosition: 'left' | 'top';
+    iconSize: number;
+    infoUrl: string | null;
+    zOrder: number;
 }
 
 export interface SceneArrow {
@@ -166,6 +226,9 @@ export interface SceneLink {
     bwFontSize: number;
     inComment: string;
     outComment: string;
+    inCommentPos?: Point | null;
+    outCommentPos?: Point | null;
+    staticBadge?: SceneStaticBadge | null;
     isDown: boolean;
     isStale: boolean;
     dataTimestamp: number | null;
@@ -228,6 +291,7 @@ export interface Scene {
     canvas: CanvasConfig;
     nodes: SceneNode[];
     links: SceneLink[];
+    annotations?: SceneAnnotation[];
     legend: SceneLegend | null;
     refreshSeconds: number;
 }
@@ -268,9 +332,11 @@ export interface PortLookupItem {
     ifOperStatus: string;
 }
 
+export type AssetKind = 'background' | 'icon' | 'vendor';
+
 export interface AssetItem {
     id: number;
-    kind: 'background' | 'icon';
+    kind: AssetKind;
     original_name: string;
     mime: string;
     size: number;

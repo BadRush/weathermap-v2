@@ -22,6 +22,15 @@ class WeathermapAsset extends Model
 
     public const string KIND_ICON = 'icon';
 
+    public const string KIND_VENDOR = 'vendor';
+
+    /** @var list<string> */
+    public const array ALLOWED_KINDS = [
+        self::KIND_BACKGROUND,
+        self::KIND_ICON,
+        self::KIND_VENDOR,
+    ];
+
     protected $table = 'weathermap_assets';
 
     protected $fillable = [

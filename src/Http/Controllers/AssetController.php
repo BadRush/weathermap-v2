@@ -6,6 +6,7 @@ namespace BadRush\Weathermap\Http\Controllers;
 
 use BadRush\Weathermap\Models\WeathermapAsset;
 use BadRush\Weathermap\Policies\WeathermapMapPolicy;
+use BadRush\Weathermap\Services\AssetInUseException;
 use BadRush\Weathermap\Services\AssetStorageService;
 use BadRush\Weathermap\Services\MapRendererService;
 use BadRush\Weathermap\Support\LibreNmsBridge;
@@ -33,23 +34,23 @@ final class AssetController extends Controller
         abort_unless($this->policy->create($user), 403);
 
         $kind = $request->query('kind');
+        $q = trim($request->string('q')->toString());
+
         $query = WeathermapAsset::query()->orderByDesc('id');
-        if (is_string($kind) && in_array($kind, [WeathermapAsset::KIND_BACKGROUND, WeathermapAsset::KIND_ICON], true)) {
+        if (is_string($kind) && in_array($kind, WeathermapAsset::ALLOWED_KINDS, true)) {
             $query->where('kind', $kind);
+        }
+        if ($q !== '') {
+            $query->where('original_name', 'like', '%'.$q.'%');
         }
 
         /** @var Collection<int, WeathermapAsset> $rows */
-        $rows = $query->limit(100)->get();
-        $assets = $rows->map(static fn (WeathermapAsset $a): array => [
-            'id' => $a->id,
-            'kind' => $a->kind,
-            'original_name' => $a->original_name,
-            'mime' => $a->mime,
-            'size' => $a->size,
-            'url' => "/weathermap/api/assets/{$a->id}",
-        ]);
+        $rows = $query->limit(200)->get();
 
-        return response()->json(['assets' => $assets]);
+        return response()->json([
+            'assets' => $rows->map(static fn (WeathermapAsset $a): array => self::serializeAsset($a))->values()->all(),
+            'vendorDir' => 'storage/app/weathermap/assets/vendors',
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -59,7 +60,7 @@ final class AssetController extends Controller
         abort_unless($this->policy->create($user), 403);
 
         $request->validate([
-            'kind' => ['required', 'in:background,icon'],
+            'kind' => ['required', 'in:background,icon,vendor'],
             'file' => ['required', 'file', 'max:2048'],
         ]);
 
@@ -75,15 +76,54 @@ final class AssetController extends Controller
         }
 
         return response()->json([
-            'asset' => [
-                'id' => $asset->id,
-                'kind' => $asset->kind,
-                'original_name' => $asset->original_name,
-                'mime' => $asset->mime,
-                'size' => $asset->size,
-                'url' => "/weathermap/api/assets/{$asset->id}",
-            ],
+            'asset' => self::serializeAsset($asset),
         ], 201);
+    }
+
+    public function syncVendors(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_if($user === null, 401);
+        abort_unless($this->policy->create($user), 403);
+
+        $summary = $this->storage->syncVendorFolder(LibreNmsBridge::userId($user));
+
+        /** @var Collection<int, WeathermapAsset> $rows */
+        $rows = WeathermapAsset::query()
+            ->where('kind', WeathermapAsset::KIND_VENDOR)
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get();
+
+        return response()->json([
+            'imported' => $summary['imported'],
+            'skipped' => $summary['skipped'],
+            'errors' => $summary['errors'],
+            'assets' => $rows->map(static fn (WeathermapAsset $a): array => self::serializeAsset($a))->values()->all(),
+        ]);
+    }
+
+    public function destroy(Request $request, WeathermapAsset $asset): JsonResponse
+    {
+        $user = $request->user();
+        abort_if($user === null, 401);
+        abort_unless($this->policy->create($user), 403);
+
+        $id = $asset->id;
+
+        try {
+            $this->storage->deleteAsset($asset);
+        } catch (AssetInUseException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'maps' => $e->mapNames,
+            ], 409);
+        }
+
+        return response()->json([
+            'deleted' => true,
+            'id' => $id,
+        ]);
     }
 
     public function show(Request $request, WeathermapAsset $asset): Response
@@ -115,5 +155,20 @@ final class AssetController extends Controller
             'Cache-Control' => 'private, max-age=86400',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /**
+     * @return array{id: int, kind: string, original_name: string, mime: string, size: int, url: string}
+     */
+    private static function serializeAsset(WeathermapAsset $a): array
+    {
+        return [
+            'id' => $a->id,
+            'kind' => $a->kind,
+            'original_name' => $a->original_name,
+            'mime' => $a->mime,
+            'size' => $a->size,
+            'url' => "/weathermap/api/assets/{$a->id}",
+        ];
     }
 }

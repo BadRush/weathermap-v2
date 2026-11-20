@@ -136,10 +136,22 @@ Rendered PNGs and thumbnails are written atomically outside the webroot at `/opt
 Ensure the `librenms` user (and web server group, if different) can read/write `storage/app/weathermap`:
 
 ```bash
-sudo mkdir -p /opt/librenms/storage/app/weathermap/{maps,assets}
+sudo mkdir -p /opt/librenms/storage/app/weathermap/{maps,assets/vendors,assets/icons,assets/backgrounds}
 sudo chown -R librenms:librenms /opt/librenms/storage/app/weathermap
 sudo chmod -R 775 /opt/librenms/storage/app/weathermap
 ```
+
+### 4.2.1 Centralized Reusable Vendor Logo Folder
+
+To share ISP/vendor logos across multiple links and maps without uploading repeatedly:
+- Upload multiple PNG/JPEG/WebP files directly from the Editor (**Vendor Logos & Icons** modal), **or**
+- Copy your logo collection via SCP/SFTP into `/opt/librenms/storage/app/weathermap/assets/vendors/` and index them either via the **Sync Folder** button in the UI or via CLI:
+  ```bash
+  sudo su - librenms
+  cd /opt/librenms
+  ./lnms weathermap:sync-assets
+  ```
+- All imported images are sanitized through PHP GD to PNG (max 512 px, ≤ 2 MB) with SHA-256 deduplication; `.svg` files are skipped for security.
 
 On **SELinux-enforcing** systems (RHEL/Rocky/Alma/Fedora):
 ```bash
@@ -165,6 +177,12 @@ When you use **RRD targets**, `weathermapV2` automatically reads LibreNMS's `rrd
   1. Create a dedicated low-privilege user (e.g. `noc-kiosk`) with role `global-read` (or grant specific maps via ACL).
   2. Sign in on the wallboard browser with **Remember Me** checked.
   3. Open `/weathermap/kiosk?maps=1,2,3&rotate=30` (press `F` for fullscreen, `Space` to pause, `←`/`→` to cycle maps).
+
+### 4.5 Map Timestamp Timezone (WIB Default)
+
+Map `"Updated: ..."` timestamps default to **`Asia/Jakarta` (`WIB`, UTC+7)** across live SVG views, Kiosk mode, and server-side PNG exports. To customize the timezone:
+- Set **Map Timestamp Timezone** in LibreNMS at `/plugin/settings/weathermapV2` (e.g. `Asia/Jakarta`, `Asia/Makassar`, `Asia/Jayapura`, `UTC`), **or**
+- Set `WEATHERMAP_TIMEZONE=Asia/Jakarta` in `/opt/librenms/.env`.
 
 ---
 

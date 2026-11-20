@@ -54,6 +54,19 @@
             <p class="help-block">{{ __('weathermap::weathermap.editor_roles_help') }}</p>
         </div>
 
+        <div class="form-group" style="margin-bottom: 14px;">
+            <label for="wm-set-timezone">{{ __('weathermap::weathermap.timezone') }}</label>
+            <input
+                id="wm-set-timezone"
+                type="text"
+                class="form-control"
+                name="settings[timezone]"
+                value="{{ (string) ($settings['timezone'] ?? \BadRush\Weathermap\Support\LibreNmsBridge::DEFAULT_TIMEZONE) }}"
+                placeholder="Asia/Jakarta"
+            >
+            <p class="help-block">{{ __('weathermap::weathermap.timezone_help') }}</p>
+        </div>
+
         <div class="checkbox" style="margin-bottom: 16px;">
             <label>
                 <input

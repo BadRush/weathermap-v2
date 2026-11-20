@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { Scene, SceneLink, SceneNode } from '../shared/types';
+import { computed, type CSSProperties } from 'vue';
+import type { Scene, SceneAnnotation, SceneLink, SceneNode } from '../shared/types';
 import { polygonToSvgPoints } from '../shared/geometry';
+import { layoutAnnotation, layoutStaticBadge } from '../shared/layout';
 
 const props = defineProps<{
     scene: Scene;
     zoom?: number;
+    fitMode?: 'contain' | 'kiosk';
 }>();
 
 const emit = defineEmits<{
@@ -14,6 +16,47 @@ const emit = defineEmits<{
 }>();
 
 const viewBox = computed(() => `0 0 ${props.scene.canvas.width} ${props.scene.canvas.height}`);
+
+const svgStyle = computed<CSSProperties>(() => {
+    if (props.zoom !== undefined && props.zoom > 0) {
+        return {
+            width: `${Math.round(props.scene.canvas.width * props.zoom)}px`,
+            height: `${Math.round(props.scene.canvas.height * props.zoom)}px`,
+            maxWidth: 'none',
+            maxHeight: 'none',
+        };
+    }
+    if (props.fitMode === 'kiosk') {
+        return {
+            width: '100%',
+            height: '100%',
+            maxWidth: '100%',
+            maxHeight: '100%',
+        };
+    }
+    return {
+        width: `${props.scene.canvas.width}px`,
+        maxWidth: '100%',
+        height: 'auto',
+        aspectRatio: `${props.scene.canvas.width} / ${props.scene.canvas.height}`,
+    };
+});
+
+const sceneAnnotations = computed(() => {
+    const items = props.scene.annotations ?? [];
+    return items.map((ann) => ({
+        ann,
+        layout: layoutAnnotation({
+            lines: ann.lines,
+            style: ann.style,
+            align: ann.align,
+            fontSize: ann.fontSize,
+            hasIcon: Boolean(ann.iconAssetUrl),
+            iconPosition: ann.iconPosition,
+            iconSize: ann.iconSize,
+        }),
+    }));
+});
 
 const legendBox = computed(() => {
     const leg = props.scene.legend;
@@ -52,16 +95,35 @@ function openUrl(url: string | null): void {
 function approxLabelWidth(text: string, fontSize: number): number {
     return Math.max(24, text.length * (fontSize * 0.65) + 10);
 }
+
+function getStaticBadgeLayout(link: SceneLink) {
+    const badge = link.staticBadge;
+    if (!badge) return null;
+    return layoutStaticBadge(
+        badge.pos.x,
+        badge.pos.y,
+        badge.text,
+        badge.fontSize,
+        Boolean(badge.iconAssetUrl),
+        badge.iconSize,
+    );
+}
+
+function onAnnotationClick(ann: SceneAnnotation): void {
+    openUrl(ann.infoUrl);
+}
 </script>
 
 <template>
     <svg
+        :width="scene.canvas.width"
+        :height="scene.canvas.height"
         :viewBox="viewBox"
         class="wm-scene-svg"
         role="img"
         :aria-label="scene.canvas.title || 'Network Weathermap'"
         preserveAspectRatio="xMidYMid meet"
-        :style="zoom ? { width: `${scene.canvas.width * zoom}px`, height: `${scene.canvas.height * zoom}px` } : {}"
+        :style="svgStyle"
     >
         <defs>
             <template v-if="scene.legend">
@@ -175,6 +237,96 @@ function approxLabelWidth(text: string, fontSize: number): number {
                         {{ link.inArrow.label }}
                     </text>
                 </g>
+
+                <!-- Optional Direction Comments -->
+                <g v-if="link.outComment && link.outCommentPos">
+                    <rect
+                        :x="link.outCommentPos.x - approxLabelWidth(link.outComment, Math.max(7, link.bwFontSize - 1)) / 2"
+                        :y="link.outCommentPos.y - (Math.max(7, link.bwFontSize - 1) + 5) / 2"
+                        :width="approxLabelWidth(link.outComment, Math.max(7, link.bwFontSize - 1))"
+                        :height="Math.max(7, link.bwFontSize - 1) + 5"
+                        rx="3"
+                        fill="#0f172a"
+                        :stroke="link.outlineColor"
+                        stroke-width="0.8"
+                    />
+                    <text
+                        :x="link.outCommentPos.x"
+                        :y="link.outCommentPos.y"
+                        text-anchor="middle"
+                        dominant-baseline="central"
+                        :font-size="Math.max(7, link.bwFontSize - 1)"
+                        font-weight="600"
+                        fill="#cbd5e1"
+                        font-family="WeathermapSans, sans-serif"
+                    >
+                        {{ link.outComment }}
+                    </text>
+                </g>
+                <g v-if="link.inComment && link.inCommentPos">
+                    <rect
+                        :x="link.inCommentPos.x - approxLabelWidth(link.inComment, Math.max(7, link.bwFontSize - 1)) / 2"
+                        :y="link.inCommentPos.y - (Math.max(7, link.bwFontSize - 1) + 5) / 2"
+                        :width="approxLabelWidth(link.inComment, Math.max(7, link.bwFontSize - 1))"
+                        :height="Math.max(7, link.bwFontSize - 1) + 5"
+                        rx="3"
+                        fill="#0f172a"
+                        :stroke="link.outlineColor"
+                        stroke-width="0.8"
+                    />
+                    <text
+                        :x="link.inCommentPos.x"
+                        :y="link.inCommentPos.y"
+                        text-anchor="middle"
+                        dominant-baseline="central"
+                        :font-size="Math.max(7, link.bwFontSize - 1)"
+                        font-weight="600"
+                        fill="#cbd5e1"
+                        font-family="WeathermapSans, sans-serif"
+                    >
+                        {{ link.inComment }}
+                    </text>
+                </g>
+
+                <!-- Static Vendor / Circuit Badge -->
+                <template v-if="link.staticBadge">
+                    <g v-for="badgeLayout in [getStaticBadgeLayout(link)]" :key="`${link.id}-badge`">
+                        <template v-if="badgeLayout">
+                            <rect
+                                :x="badgeLayout.boxX"
+                                :y="badgeLayout.boxY"
+                                :width="badgeLayout.boxW"
+                                :height="badgeLayout.boxH"
+                                rx="4"
+                                :fill="link.staticBadge.bgColor"
+                                :stroke="link.staticBadge.borderColor"
+                                stroke-width="1"
+                            />
+                            <image
+                                v-if="badgeLayout.hasIcon && link.staticBadge.iconAssetUrl"
+                                :href="link.staticBadge.iconAssetUrl"
+                                :x="badgeLayout.iconX"
+                                :y="badgeLayout.iconY"
+                                :width="badgeLayout.iconSize"
+                                :height="badgeLayout.iconSize"
+                                preserveAspectRatio="xMidYMid meet"
+                            />
+                            <text
+                                v-if="badgeLayout.hasText"
+                                :x="badgeLayout.textX"
+                                :y="badgeLayout.textY"
+                                text-anchor="middle"
+                                dominant-baseline="central"
+                                :font-size="link.staticBadge.fontSize"
+                                font-weight="700"
+                                :fill="link.staticBadge.textColor"
+                                font-family="WeathermapSans, sans-serif"
+                            >
+                                {{ link.staticBadge.text }}
+                            </text>
+                        </template>
+                    </g>
+                </template>
             </g>
         </g>
 
@@ -232,6 +384,51 @@ function approxLabelWidth(text: string, fontSize: number): number {
             >
                 {{ node.label }}
             </text>
+        </g>
+
+        <!-- Free-Floating Static Labels (Annotations) -->
+        <g
+            v-for="item in sceneAnnotations"
+            :key="item.ann.id"
+            :transform="`translate(${item.ann.x}, ${item.ann.y})`"
+            :style="{ cursor: item.ann.infoUrl ? 'pointer' : 'default' }"
+            @click="onAnnotationClick(item.ann)"
+        >
+            <rect
+                v-if="item.ann.style === 'card'"
+                x="0"
+                y="0"
+                :width="item.layout.boxW"
+                :height="item.layout.boxH"
+                rx="6"
+                :fill="item.ann.bgColor"
+                :stroke="item.ann.borderColor"
+                stroke-width="1"
+            />
+            <image
+                v-if="item.layout.hasIcon && item.ann.iconAssetUrl"
+                :href="item.ann.iconAssetUrl"
+                :x="item.layout.iconX"
+                :y="item.layout.iconY"
+                :width="item.layout.iconSize"
+                :height="item.layout.iconSize"
+                preserveAspectRatio="xMidYMid meet"
+            />
+            <template v-if="item.layout.hasText">
+                <text
+                    v-for="(line, lineIdx) in item.ann.lines"
+                    :key="lineIdx"
+                    :x="item.layout.textX"
+                    :y="item.layout.textStartY + lineIdx * item.layout.lineHeight"
+                    :text-anchor="item.layout.textAnchor"
+                    dominant-baseline="central"
+                    :font-size="item.ann.fontSize"
+                    :fill="item.ann.textColor"
+                    font-family="WeathermapSans, sans-serif"
+                >
+                    {{ line }}
+                </text>
+            </template>
         </g>
 
         <!-- Legend -->
@@ -349,8 +546,6 @@ function approxLabelWidth(text: string, fontSize: number): number {
 <style scoped>
 .wm-scene-svg {
     display: block;
-    max-width: 100%;
-    height: auto;
     user-select: none;
 }
 .wm-link-group:hover polygon {

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace BadRush\Weathermap\Http\Controllers;
 
-use BadRush\Weathermap\Policies\WeathermapMapPolicy;
 use App\Models\Device;
 use App\Models\Port;
 use App\Models\User;
+use BadRush\Weathermap\Policies\WeathermapMapPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

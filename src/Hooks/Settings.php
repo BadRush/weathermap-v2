@@ -6,6 +6,7 @@ namespace BadRush\Weathermap\Hooks;
 
 use BadRush\Weathermap\Policies\WeathermapMapPolicy;
 use BadRush\Weathermap\Render\GdRenderer;
+use BadRush\Weathermap\Support\LibreNmsBridge;
 use Illuminate\Contracts\Auth\Authenticatable;
 use LibreNMS\Interfaces\Plugins\Hooks\SettingsHook;
 
@@ -29,6 +30,7 @@ final class Settings implements SettingsHook
                 'default_refresh_seconds' => 60,
                 'default_rrd_period' => 900,
                 'editor_roles' => '',
+                'timezone' => LibreNmsBridge::DEFAULT_TIMEZONE,
                 'png_rendering_enabled' => true,
             ], $settings),
             'hasGd' => GdRenderer::hasGd(),
