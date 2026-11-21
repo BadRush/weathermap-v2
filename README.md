@@ -33,8 +33,9 @@ It brings the visual clarity of classic [PHP Network Weathermap](http://www.netw
   - Segment midpoint `+` ghost handles, segment-aware double-click insertion, numbered VIA waypoints, `Delete` removes only the selected waypoint, orthogonal alignment guides (`Align 90°`), and quick **L-Bend** / **Z-Bend** presets.
   - Constant-thickness miter joins across 90° and arbitrary bends with bevel fallback on acute hairpins (pixel-identical between browser SVG and server PNG).
   - Zoom/pan, snap-to-grid, marquee multi-select + group drag, undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`), optimistic-lock revision conflict protection, searchable LibreNMS Device & Port pickers, Scale & Legend editor, and GD-sanitized background/icon uploads (SVG blocked).
+  - **Link Static Labels & Free-Floating Annotations (`+ Text`)**: Per-link vendor/ISP badges with drag positioning & optional direction comments, multi-line floating text cards (`card`/`plain`), and a **centralized reusable vendor logo library** (`storage/app/weathermap/assets/vendors/`) with multi-file upload, live search, folder sync (`./lnms weathermap:sync-assets`), and safe delete.
 - **Hybrid Live SVG Viewer, NOC Kiosk & Server PNG**:
-  - Live SVG viewer with auto-refresh (pauses when tab is hidden), hover tooltips with tabular metrics + LibreNMS 24h `graph.php` mini graph, and click-through links.
+  - Live SVG viewer with `ResizeObserver` viewport-fit scaling, smooth zoom controls (`Ctrl/Cmd+Wheel`), auto-refresh (pauses when tab is hidden), hover tooltips with vendor header + tabular metrics + LibreNMS 24h `graph.php` mini graph, configurable map timestamp timezone (defaults to `Asia/Jakarta` / `WIB`), and click-through links.
   - Bare fullscreen NOC Kiosk mode (`/weathermap/kiosk?maps=1,2&rotate=30`) with auto-rotation and keyboard shortcuts (`Space`, `←`, `→`, `F`).
   - Scheduled 5-minute GD PNG & thumbnail generation stored outside the webroot (`storage/app/weathermap/`) and served behind per-map authorization.
 - **Flexible Datasources**:
@@ -49,17 +50,19 @@ It brings the visual clarity of classic [PHP Network Weathermap](http://www.netw
 
 > For full step-by-step instructions (bare-metal, GitHub VCS, Docker, SELinux, `rrdcached`, Kiosk TV setup, upgrading, and troubleshooting), see **[docs/INSTALLATION.md](./docs/INSTALLATION.md)**.
 
-Run as the `librenms` user in `/opt/librenms`:
+Run as the `librenms` user in `/opt/librenms` (always use `./scripts/composer_wrapper.php` and `./lnms plugin:add` rather than OS `/usr/bin/composer`):
 
 ```bash
 # Option A: Install from Packagist
-./lnms plugin:add badrush/weathermap-v2
+./lnms plugin:add badrush/weathermap-v2 '^1.0'
 ./lnms migrate
+php artisan optimize:clear
 
-# Option B: Install directly from GitHub before Packagist indexing
-composer config repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2
-./lnms plugin:add badrush/weathermap-v2:^1.0
+# Option B: Install directly from GitHub (--global survives nightly LibreNMS daily.sh & auto-updates 1.x tags)
+./scripts/composer_wrapper.php config --global repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2
+./lnms plugin:add badrush/weathermap-v2 '^1.0'
 ./lnms migrate
+php artisan optimize:clear
 ```
 
 Then open **Overview → Plugins → WeathermapV2** (or `/weathermap`) in LibreNMS.
@@ -85,6 +88,9 @@ Then open **Overview → Plugins → WeathermapV2** (or `/weathermap`) in LibreN
 
 # Import a classic PHP Network Weathermap .conf file
 ./lnms weathermap:import /path/to/legacy.conf --name="Core Backbone"
+
+# Index drop-in vendor logos copied to storage/app/weathermap/assets/vendors/
+./lnms weathermap:sync-assets
 ```
 
 ---

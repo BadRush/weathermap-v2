@@ -33,7 +33,7 @@ This guide covers installing, configuring, upgrading, and operating **`badrush/w
 
 ## 2. Bare-Metal Installation (`/opt/librenms`)
 
-Always run Composer and `lnms` commands as the **`librenms`** user (never `root`).
+Always run Composer and `lnms` commands as the **`librenms`** user (never `root`), and always use LibreNMS's bundled **`./scripts/composer_wrapper.php`** and **`./lnms plugin:add`** instead of the OS-packaged `/usr/bin/composer` (which often crashes on PHP 8.4/8.5 or triggers `LibreNMS\ComposerHelper::preUpdate`).
 
 ### Method A — Install from Packagist (Recommended)
 
@@ -41,21 +41,21 @@ Always run Composer and `lnms` commands as the **`librenms`** user (never `root`
 sudo su - librenms
 cd /opt/librenms
 
-./lnms plugin:add badrush/weathermap-v2
+./lnms plugin:add badrush/weathermap-v2 '^1.0'
 ./lnms migrate
 php artisan optimize:clear
 ```
 
-### Method B — Install Directly from GitHub (VCS Repository)
+### Method B — Install Directly from GitHub (VCS Repository, `daily.sh`-Safe)
 
-Use this method if you want to install straight from GitHub without waiting for Packagist:
+Use this method to install straight from GitHub without waiting for Packagist. **Always use `--global`** so the VCS repository is stored in `~/.config/composer/config.json` (gitignored by LibreNMS's `.*` rule) instead of `/opt/librenms/composer.json` — otherwise LibreNMS's nightly `daily.sh` (`git checkout -- composer.json composer.lock`) will wipe the repository entry and uninstall the plugin overnight:
 
 ```bash
 sudo su - librenms
 cd /opt/librenms
 
-composer config repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2
-./lnms plugin:add badrush/weathermap-v2:^1.0
+./scripts/composer_wrapper.php config --global repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2
+./lnms plugin:add badrush/weathermap-v2 '^1.0'
 ./lnms migrate
 php artisan optimize:clear
 ```
@@ -67,8 +67,8 @@ sudo su - librenms
 cd /opt/librenms
 
 git clone https://github.com/BadRush/weathermap-v2.git /opt/weathermap-v2
-composer config repositories.weathermap-v2 path /opt/weathermap-v2
-./lnms plugin:add badrush/weathermap-v2:@dev
+./scripts/composer_wrapper.php config --global repositories.weathermap-v2 path /opt/weathermap-v2
+./lnms plugin:add badrush/weathermap-v2 '@dev'
 ./lnms migrate
 php artisan optimize:clear
 ```
@@ -97,8 +97,8 @@ If you run the official `librenms/librenms` Docker image:
 
    USER librenms
    WORKDIR /opt/librenms
-   RUN composer config repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2 \
-       && composer require badrush/weathermap-v2:^1.0 --no-interaction \
+   RUN ./scripts/composer_wrapper.php config --global repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2 \
+       && ./lnms plugin:add badrush/weathermap-v2 '^1.0' \
        && php artisan package:discover --ansi
    USER root
    ```
@@ -205,18 +205,48 @@ What gets converted automatically:
 
 ---
 
-## 6. Upgrading & Uninstalling
+## 6. Upgrading, Auto-Update & Uninstalling
 
-### Upgrading
+### Manual Upgrade (On-Demand)
+
+Do **not** run `composer update` directly in `/opt/librenms` (LibreNMS blocks it via `LibreNMS\ComposerHelper::preUpdate`). Instead, use LibreNMS's native plugin CLI:
 
 ```bash
 sudo su - librenms
 cd /opt/librenms
 
-composer update badrush/weathermap-v2
+# Refresh all plugins registered in composer.plugins.json to the latest matching tag:
+./lnms plugin:sync
+# Or bump to a specific minimum version constraint:
+./lnms plugin:add badrush/weathermap-v2 '^1.0'
+
 ./lnms migrate
 php artisan optimize:clear
+
+# Verify installed version:
+./scripts/composer_wrapper.php show badrush/weathermap-v2 | head -n 5
 ```
+
+### Automatic Nightly Updates via LibreNMS `daily.sh` (GitHub VCS & Packagist)
+
+When `badrush/weathermap-v2` is installed with `./lnms plugin:add badrush/weathermap-v2 '^1.0'` and either:
+- the GitHub VCS repo is saved in **`--global`** Composer config (`~/.config/composer/config.json`), **or**
+- the package is indexed on **Packagist.org**,
+
+LibreNMS's nightly `daily.sh` automatically keeps `weathermapV2` updated to the latest `1.x` release tag and runs `lnms migrate --force` whenever LibreNMS core auto-updates are enabled (`./lnms config:get update` is `true` / `1`).
+
+Verify that your server is ready for automatic updates with zero warnings:
+```bash
+sudo su - librenms
+cd /opt/librenms
+./scripts/composer_wrapper.php config --list | grep weathermap
+./lnms config:get update
+./validate.php
+```
+
+> **Note**: If you intentionally disabled LibreNMS core auto-updates (`update = 0`), `daily.sh` skips plugin re-sync; run `./lnms plugin:sync && ./lnms migrate --force && php artisan optimize:clear` manually or from a scheduled cron when you want to pull new tags.
+
+> **Maintainers (GitHub → Packagist Auto-Sync)**: After submitting `https://github.com/BadRush/weathermap-v2` on Packagist.org, either connect the **Packagist GitHub App** (1-click, no secrets required) or add `PACKAGIST_USERNAME` and `PACKAGIST_API_TOKEN` under GitHub Repository **Settings → Secrets and variables → Actions** so `.github/workflows/release.yml` notifies Packagist automatically on every pushed `v*.*.*` tag.
 
 ### Uninstalling
 
@@ -225,6 +255,8 @@ sudo su - librenms
 cd /opt/librenms
 
 ./lnms plugin:remove badrush/weathermap-v2
+# Optional: remove the global VCS repository entry if installed via Method B/C
+./scripts/composer_wrapper.php config --global --unset repositories.weathermap-v2
 php artisan optimize:clear
 ```
 
@@ -251,3 +283,5 @@ rm -rf /opt/librenms/storage/app/weathermap
 | RRD target returns no data | `rrdcached` flush lag or invalid relative path | Increase `rrdPeriodSeconds` (e.g., `1100`) in map settings and ensure path is relative to `rrd_dir` |
 | HTTP `409 Conflict` when saving | Another user saved a newer revision | Click **Reload Latest Map** in the conflict dialog before re-applying changes |
 | Plugin routes return `404` | Stale Laravel route cache or plugin disabled | Enable `weathermapV2` in `/plugin/settings` and run `php artisan optimize:clear` |
+| Plugin disappears overnight after `daily.sh` | VCS repo was added to `/opt/librenms/composer.json` (which `daily.sh` resets via `git checkout`) instead of `--global` or Packagist | Move repo to global config: `./scripts/composer_wrapper.php config --global repositories.weathermap-v2 vcs https://github.com/BadRush/weathermap-v2`, unset local entry, then run `./lnms plugin:sync` |
+| `ComposerHelper::preUpdate` error, PHP 8.4 deprecations, or `normalizer_is_normalized()` fatal crash | Ran OS-packaged `/usr/bin/composer` or raw `composer update` directly | Always use `./scripts/composer_wrapper.php` and `./lnms plugin:add` / `./lnms plugin:sync` instead of `/usr/bin/composer` |

@@ -31,3 +31,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+
+      - name: Notify Packagist (optional)
+        env:
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_API_TOKEN: ${{ secrets.PACKAGIST_API_TOKEN }}
+        run: |
+          if [ -n "$PACKAGIST_USERNAME" ] && [ -n "$PACKAGIST_API_TOKEN" ]; then
+            curl -fsS -X POST "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_API_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              -d '{"repository":{"url":"https://github.com/BadRush/weathermap-v2"}}'
+          else
+            echo "Skipping Packagist API notification (PACKAGIST_USERNAME/PACKAGIST_API_TOKEN not set; use Packagist GitHub App or configure secrets)."
+          fi
